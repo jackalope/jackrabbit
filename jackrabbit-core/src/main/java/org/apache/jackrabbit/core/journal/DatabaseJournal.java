@@ -125,10 +125,22 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
      */
     private String dataSourceName;
 
+    
     /**
+     * DataSource logical name, bean property.
+     */
+    private String dataSourceNameJournalRead;
+
+	
+	/**
      * The connection helper
      */
     ConnectionHelper conHelper;
+
+    /**
+     * The connection helper
+     */
+    ConnectionHelper conHelperJournalRead;
 
     /**
      * Auto commit level.
@@ -257,6 +269,7 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
 
         try {
             conHelper = createConnectionHelper(getDataSource());
+            conHelperJournalRead = createConnectionHelper(getDataSourceJournalRead());
 
             // make sure schemaObjectPrefix consists of legal name characters only
             schemaObjectPrefix = conHelper.prepareDbIdentifier(schemaObjectPrefix);
@@ -285,6 +298,14 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
             return connectionFactory.getDataSource(getDriver(), getUrl(), getUser(), getPassword());
         } else {
             return connectionFactory.getDataSource(dataSourceName);
+        }
+    }
+	
+	 private DataSource getDataSourceJournalRead() throws Exception {
+        if (getDataSourceNameJournalRead() == null || "".equals(getDataSourceNameJournalRead())) {
+            return getDataSource();
+        } else {
+            return connectionFactory.getDataSource(dataSourceNameJournalRead);
         }
     }
 
@@ -416,7 +437,7 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
      */
     public RecordIterator getRecords(long startRevision) throws JournalException {
         try {
-            return new DatabaseRecordIterator(conHelper.exec(selectRevisionsStmtSQL, new Object[]{new Long(
+            return new DatabaseRecordIterator(conHelperJournalRead.exec(selectRevisionsStmtSQL, new Object[]{new Long(
                     startRevision)}, false, 0), getResolver(), getNamePathResolver());
         } catch (SQLException e) {
             throw new JournalException("Unable to return record iterator.", e);
@@ -428,7 +449,7 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
      */
     public RecordIterator getRecords() throws JournalException {
         try {
-            return new DatabaseRecordIterator(conHelper.exec(selectRevisionsStmtSQL, new Object[]{new Long(
+            return new DatabaseRecordIterator(conHelperJournalRead.exec(selectRevisionsStmtSQL, new Object[]{new Long(
                     Long.MIN_VALUE)}, false, 0), getResolver(), getNamePathResolver());
         } catch (SQLException e) {
             throw new JournalException("Unable to return record iterator.", e);
@@ -738,10 +759,19 @@ public class DatabaseJournal extends AbstractJournal implements DatabaseAware {
         return dataSourceName;
     }
 
+    public String getDataSourceNameJournalRead() {
+        return dataSourceNameJournalRead;
+    }
+
     public void setDataSourceName(String dataSourceName) {
         this.dataSourceName = dataSourceName;
     }
 
+    public void setDataSourceNameJournalRead(String dataSourceName) {
+        this.dataSourceNameJournalRead = dataSourceName;
+    }
+
+	
     /**
      * @return whether the schema check is enabled
      */
