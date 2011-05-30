@@ -1,0 +1,20 @@
+# Jackrabbit patches for Jackalope
+
+For making jackalope work, we need some patches for Jackrabbit. We maintain here a forked version of the 2.2.x branch to not have to wait for jackrabbit to integrate them
+
+The branchname is 2.2-jackalope
+
+# Patches need for Jackalope to run
+
+## JCR-2454 : spi2dav: JSR 283 NodeType Management
+
+Jira Issue: https://issues.apache.org/jira/browse/JCR-2454 
+Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a574884467db7d69a4
+
+
+# Patches not really needed for Jackalope to run (but nice to have for our setups)
+
+## JCR-2968 : Add a JournalRead option for reading (but not writing) the Cluster Journal from a different place than the other journal data
+
+Jira Issue: https://issues.apache.org/jira/browse/JCR-2968
+Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d62fbd266c4ca8c1
