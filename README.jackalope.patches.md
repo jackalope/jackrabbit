@@ -21,5 +21,5 @@ Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d
 
 # Download
 
-The Jackrabbit-standalone jar can be downloaded from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.7-jackalope-SNAPSHOT.jar
+The Jackrabbit-standalone jar can be downloaded from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.7-jackalope-SNAPSHOT.jar (or if that doesn't work, try http://patched-jackrabbit.s3-website-eu-west-1.amazonaws.com/ for further links)
 
