@@ -21,5 +21,5 @@ Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d
 
 # Downloads
 
-Either from here https://github.com/downloads/jackalope/jackrabbit/ or from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.7-jackalope-SNAPSHOT.jar (the later may be newer, since we can automate that upload)
+Either from from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.7-jackalope-SNAPSHOT.jar or here https://github.com/downloads/jackalope/jackrabbit/ (the former may be newer, since we can automate that upload)
 
