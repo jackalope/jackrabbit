@@ -4,7 +4,7 @@ For making jackalope work, we need some patches for Jackrabbit. We maintain here
 
 The branchname is 2.2-jackalope
 
-# Patches need for Jackalope to run
+# Patches needed for Jackalope to run
 
 ## JCR-2454 : spi2dav: JSR 283 NodeType Management
 
