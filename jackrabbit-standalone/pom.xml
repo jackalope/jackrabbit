@@ -68,6 +68,12 @@
       <artifactId>jcr</artifactId>
       <scope>compile</scope>
     </dependency>
+	<dependency>
+         <groupId>mysql</groupId>
+         <artifactId>mysql-connector-java</artifactId>
+         <type>jar</type>
+         <version>[5.1,6.0)</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.jackrabbit</groupId>
       <artifactId>jackrabbit-webapp</artifactId>
