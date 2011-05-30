@@ -18,3 +18,8 @@ Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a57
 
 Jira Issue: https://issues.apache.org/jira/browse/JCR-2968
 Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d62fbd266c4ca8c1
+
+# Downloads
+
+Either from here https://github.com/downloads/jackalope/jackrabbit/ or from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.7-jackalope-SNAPSHOT.jar (the later may be newer, since we can automate that upload)
+
