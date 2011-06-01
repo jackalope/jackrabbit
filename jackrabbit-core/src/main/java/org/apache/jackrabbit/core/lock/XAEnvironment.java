@@ -269,7 +269,7 @@ class XAEnvironment {
      */
     public void addLockToken(SessionImpl session, String lt) throws RepositoryException {
         try {
-            NodeId id = LockInfo.parseLockToken(lt);
+            NodeId id = NodeId.valueOf(lt);
             NodeImpl node = (NodeImpl) session.getItemManager().getItem(id);
             LockInfo info = getLockInfo(node);
             if (info != null) {
@@ -300,7 +300,7 @@ class XAEnvironment {
      */
     public void removeLockToken(SessionImpl session, String lt) throws RepositoryException {
         try {
-            NodeId id = LockInfo.parseLockToken(lt);
+            NodeId id = NodeId.valueOf(lt);
 
             NodeImpl node = (NodeImpl) session.getItemManager().getItem(id);
             LockInfo info = getLockInfo(node);

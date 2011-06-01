@@ -114,8 +114,7 @@ public abstract class LockInfo {
      * @return lock token
      */
     public String getLockToken() {
-        String uuid = id.toString();
-        return uuid + "-" + getLockTokenCheckDigit(uuid);
+        return = id.toString();
     }
 
     /**
@@ -294,66 +293,6 @@ public abstract class LockInfo {
         buffer.append("owner:").append(lockOwner);
         buffer.append(')');
         return buffer.toString();
-    }
-
-    /**
-     * Parse a lock token string representation and return the lock
-     * holder node id.
-     *
-     * @param token string representation of lock token
-     * @return lock holder node id
-     * @throws IllegalArgumentException if some field is illegal
-     */
-    public static NodeId parseLockToken(String token)
-            throws IllegalArgumentException {
-        int sep = token.lastIndexOf('-');
-        if (sep == -1 || sep == token.length() - 1) {
-            throw new IllegalArgumentException("Separator not found. Token [" + token + "]");
-        }
-        String uuid = token.substring(0, sep);
-        if (getLockTokenCheckDigit(uuid) != token.charAt(token.length() - 1)) {
-            throw new IllegalArgumentException("Bad check digit. Token [" + token + "]");
-        }
-        return NodeId.valueOf(uuid);
-    }
-
-    /**
-     * Return the check digit for a lock token, given by its UUID
-     * @param uuid uuid
-     * @return check digit
-     */
-    private static char getLockTokenCheckDigit(String uuid) {
-        int result = 0;
-
-        int multiplier = 36;
-        for (int i = 0; i < uuid.length(); i++) {
-            char c = uuid.charAt(i);
-            if (c >= '0' && c <= '9') {
-                int num = c - '0';
-                result += multiplier * num;
-                multiplier--;
-            } else if (c >= 'A' && c <= 'F') {
-                int num = c - 'A' + 10;
-                result += multiplier * num;
-                multiplier--;
-            } else if (c >= 'a' && c <= 'f') {
-                int num = c - 'a' + 10;
-                result += multiplier * num;
-                multiplier--;
-            }
-        }
-
-        int rem = result % 37;
-        if (rem != 0) {
-            rem = 37 - rem;
-        }
-        if (rem >= 0 && rem <= 9) {
-            return (char) ('0' + rem);
-        } else if (rem >= 10 && rem <= 35) {
-            return (char) ('A' + rem - 10);
-        } else {
-            return '+';
-        }
     }
 
 }

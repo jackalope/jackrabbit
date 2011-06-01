@@ -291,7 +291,7 @@ public class LockManagerImpl
         }
 
         try {
-            NodeId id = LockInfo.parseLockToken(parts[0]);
+            NodeId id = NodeId.valueOf(parts[0]);
             NodeImpl node = (NodeImpl) sysSession.getItemManager().getItem(id);
             Path path = getPath(sysSession, id);
 
@@ -780,7 +780,7 @@ public class LockManagerImpl
      */
     public void addLockToken(SessionImpl session, String lt) throws LockException, RepositoryException {
         try {
-            NodeId id = LockInfo.parseLockToken(lt);
+            NodeId id = NodeId.valueOf(lt);
 
             NodeImpl node = (NodeImpl) sysSession.getItemManager().getItem(id);
             Path path = node.getPrimaryPath();
@@ -818,7 +818,7 @@ public class LockManagerImpl
             throws LockException, RepositoryException {
 
         try {
-            NodeId id = LockInfo.parseLockToken(lt);
+            NodeId id = NodeId.valueOf(tokenlt);
 
             NodeImpl node = (NodeImpl) sysSession.getItemManager().getItem(id);
             PathMap.Element<LockInfo> element =
