@@ -11,6 +11,11 @@ The branchname is 2.2-jackalope
 Jira Issue: https://issues.apache.org/jira/browse/JCR-2454 
 Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a574884467db7d69a4
 
+## JCR-3005 : Make it possible to get multiple nodes in one call via davex
+
+Jira Issue: https://issues.apache.org/jira/browse/JCR-3005
+Commit: https://github.com/jackalope/jackrabbit/commit/689f076eebf7508d1c2d5315cd046883818d82c3
+
 
 # Patches not really needed for Jackalope to run (but nice to have for our setups)
 
