@@ -19,6 +19,11 @@ Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a57
 Jira Issue: https://issues.apache.org/jira/browse/JCR-2968
 Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d62fbd266c4ca8c1
 
+## JCR-3004 : Check if a DAV-Request has a Label in the header, before checking if it's version-controlled
+
+Jira Issue: https://issues.apache.org/jira/browse/JCR-3004
+Commit: https://github.com/jackalope/jackrabbit/commit/423199a71b7cdc6b71713b0c232f23de1de2eb10
+
 # Download
 
 The Jackrabbit-standalone jar can be downloaded from https://s3-eu-west-1.amazonaws.com/patched-jackrabbit/jackrabbit-standalone-2.2.8-jackalope-SNAPSHOT.jar (or if that doesn't work, try http://patched-jackrabbit.s3-website-eu-west-1.amazonaws.com/ for further links)
