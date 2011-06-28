@@ -14,7 +14,7 @@ Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a57
 ## JCR-3005 : Make it possible to get multiple nodes in one call via davex
 
 Jira Issue: https://issues.apache.org/jira/browse/JCR-3005
-Commit: https://github.com/jackalope/jackrabbit/commit/689f076eebf7508d1c2d5315cd046883818d82c3
+Commit: https://github.com/jackalope/jackrabbit/commit/41ce55f155f0c59b58ce7d3b5130134df816a2d1
 
 
 # Patches not really needed for Jackalope to run (but nice to have for our setups)
