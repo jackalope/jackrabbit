@@ -201,6 +201,7 @@ public class PropertyImpl extends ItemImpl implements Property {
         thisState.setType(transientState.getType());
         thisState.setMultiValued(transientState.isMultiValued());
         thisState.setValues(transientState.getValues());
+        thisState.setModCount(transientState.getModCount());
     }
 
     protected void onRedefine(QPropertyDefinition def) throws RepositoryException {
@@ -258,7 +259,7 @@ public class PropertyImpl extends ItemImpl implements Property {
             throws ValueFormatException, VersionException,
             LockException, ConstraintViolationException,
             RepositoryException {
-        NodeImpl parent = (NodeImpl) getParent();
+        NodeImpl parent = (NodeImpl) getParent(false);
         // check multi-value flag
         if (multipleValues != isMultiple()) {
             String msg = (multipleValues) ?
@@ -325,6 +326,10 @@ public class PropertyImpl extends ItemImpl implements Property {
             type = STRING;
         }
         thisState.setType(type);
+    }
+
+    protected Node getParent(boolean checkPermission) throws RepositoryException {
+        return (Node) itemMgr.getItem(getPropertyState().getParentId(), checkPermission);
     }
 
     /**
@@ -893,7 +898,7 @@ public class PropertyImpl extends ItemImpl implements Property {
      * {@inheritDoc}
      */
     public Node getParent() throws RepositoryException {
-        return (Node) itemMgr.getItem(getPropertyState().getParentId());
+        return getParent(true);
     }
 
     //--------------------------------------------------------------< Object >

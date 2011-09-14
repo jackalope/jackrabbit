@@ -40,6 +40,10 @@ class ConstraintSplitInfo {
     
     private boolean hasRightConstraints;
 
+    private boolean hasLeftConstraints;
+
+    private boolean hasRightConstraints;
+
     private ConstraintSplitInfo leftInnerConstraints = null;
 
     private ConstraintSplitInfo rightInnerConstraints = null;
@@ -91,11 +95,15 @@ class ConstraintSplitInfo {
         ConstraintSplitInfo csi1 = new ConstraintSplitInfo(factory, source,
                 new ArrayList<Constraint>(leftConstraints),
                 new ArrayList<Constraint>(rightConstraints));
+        csi1.hasLeftConstraints = this.hasLeftConstraints;
+        csi1.hasRightConstraints = this.hasRightConstraints;
         this.leftInnerConstraints = csi1;
 
         ConstraintSplitInfo csi2 = new ConstraintSplitInfo(factory, source,
                 new ArrayList<Constraint>(leftConstraints),
                 new ArrayList<Constraint>(rightConstraints));
+        csi2.hasLeftConstraints = this.hasLeftConstraints;
+        csi2.hasRightConstraints = this.hasRightConstraints;
         this.rightInnerConstraints = csi2;
 
         this.leftConstraints.clear();
