@@ -215,7 +215,6 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
 
     private final int itemInfoCacheSize;
 
-    private final Document domFactory;
     private final NamespaceCache nsCache;
     private final URIResolverImpl uriResolver;
 
@@ -254,22 +253,18 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         this.itemInfoCacheSize = itemInfoCacheSize;
 
         try {
-            domFactory = DomUtil.createDocument();
-        } catch (ParserConfigurationException e) {
-            throw new RepositoryException(e);
-        }
-
-        try {
             URI repositoryUri = new URI((uri.endsWith("/")) ? uri : uri+"/", true);
             hostConfig = new HostConfiguration();
             hostConfig.setHost(repositoryUri);
 
             nsCache = new NamespaceCache();
-            uriResolver = new URIResolverImpl(repositoryUri, this, domFactory);
+            uriResolver = new URIResolverImpl(repositoryUri, this, DomUtil.createDocument());
             NamePathResolver resolver = new NamePathResolverImpl(nsCache);
             valueFactory = new ValueFactoryQImpl(qValueFactory, resolver);
 
         } catch (URIException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         }
         connectionManager = new MultiThreadedHttpConnectionManager();
@@ -700,7 +695,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         try {
             String uri = getItemUri(itemId, sessionInfo);
             ReportInfo reportInfo = new ReportInfo(JcrRemotingConstants.REPORT_PRIVILEGES, ItemResourceConstants.NAMESPACE);
-            reportInfo.setContentElement(DomUtil.hrefToXml(uri, domFactory));
+            reportInfo.setContentElement(DomUtil.hrefToXml(uri, DomUtil.createDocument()));
 
             method = new ReportMethod(uriResolver.getWorkspaceUri(sessionInfo.getWorkspaceName()), reportInfo);
             getClient(sessionInfo).executeMethod(method);
@@ -728,6 +723,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             // check privileges present against required privileges.
             return privileges.containsAll(requiredPrivileges);
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);
@@ -1355,7 +1352,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             DavPropertySet ps = responses[0].getProperties(DavServletResponse.SC_OK);
             if (ps.contains(DavPropertyName.LOCKDISCOVERY)) {
                 DavProperty<?> p = ps.get(DavPropertyName.LOCKDISCOVERY);
-                LockDiscovery ld = LockDiscovery.createFromXml(p.toXml(domFactory));
+                LockDiscovery ld = LockDiscovery.createFromXml(p.toXml(DomUtil.createDocument()));
                 NodeId parentId = getParentId(ps, sessionInfo);
                 return retrieveLockInfo(ld, sessionInfo, nodeId, parentId);
             }  else {
@@ -1364,6 +1361,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
                 return null;
             }
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);
@@ -1603,7 +1602,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         try {
             UpdateInfo uInfo;
             if (removeExisting || relPath != null) {
-                Element uElem = UpdateInfo.createUpdateElement(updateSource, updateType, domFactory);
+                Element uElem = UpdateInfo.createUpdateElement(updateSource, updateType, DomUtil.createDocument());
                 if (removeExisting) {
                     DomUtil.addChildElement(uElem, JcrRemotingConstants.XML_REMOVEEXISTING, ItemResourceConstants.NAMESPACE);
                 }
@@ -1619,6 +1618,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             UpdateMethod method = new UpdateMethod(uri, uInfo);
             execute(method, sessionInfo);
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);
@@ -1637,10 +1638,11 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
      */
     public Iterator<NodeId> merge(SessionInfo sessionInfo, NodeId nodeId, String srcWorkspaceName, boolean bestEffort, boolean isShallow) throws NoSuchWorkspaceException, AccessDeniedException, MergeException, LockException, InvalidItemStateException, RepositoryException {
         try {
+            Document doc = DomUtil.createDocument();
             String wspHref = uriResolver.getWorkspaceUri(srcWorkspaceName);
-            Element mElem = MergeInfo.createMergeElement(new String[] {wspHref}, !bestEffort, false, domFactory);
+            Element mElem = MergeInfo.createMergeElement(new String[] {wspHref}, !bestEffort, false, doc);
             if (isShallow) {
-                mElem.appendChild(DomUtil.depthToXml(false, domFactory));
+                mElem.appendChild(DomUtil.depthToXml(false, doc));
             }
             MergeInfo mInfo = new MergeInfo(mElem);
 
@@ -1655,6 +1657,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             }
             return failedIds.iterator();
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);
@@ -1975,7 +1979,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             if (disc.isEmpty()) {
                 events = new EventBundle[0];
             } else {
-                Element discEl = disc.toXml(domFactory);
+                Element discEl = disc.toXml(DomUtil.createDocument());
                 ElementIterator it = DomUtil.getChildren(discEl,
                         ObservationConstants.XML_EVENTBUNDLE,
                         ObservationConstants.NAMESPACE);
@@ -1998,6 +2002,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             }
             return events;
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);
@@ -2202,12 +2208,12 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
     /**
      * @see RepositoryService#getQNodeTypeDefinitions(SessionInfo)
      */
-    public Iterator<QNodeTypeDefinition> getQNodeTypeDefinitions(SessionInfo sessionInfo) throws RepositoryException {
-        ReportInfo info = new ReportInfo(JcrRemotingConstants.REPORT_NODETYPES, ItemResourceConstants.NAMESPACE);
-        info.setContentElement(DomUtil.createElement(domFactory, NodeTypeConstants.XML_REPORT_ALLNODETYPES, ItemResourceConstants.NAMESPACE));
-
+    public Iterator<QNodeTypeDefinition> getQNodeTypeDefinitions(SessionInfo sessionInfo) throws RepositoryException {       
         ReportMethod method = null;
         try {
+            ReportInfo info = new ReportInfo(JcrRemotingConstants.REPORT_NODETYPES, ItemResourceConstants.NAMESPACE);
+            info.setContentElement(DomUtil.createElement(DomUtil.createDocument(), NodeTypeConstants.XML_REPORT_ALLNODETYPES, ItemResourceConstants.NAMESPACE));
+
             String workspaceUri = uriResolver.getWorkspaceUri(sessionInfo.getWorkspaceName());
             method = new ReportMethod(workspaceUri, info);
             getClient(sessionInfo).executeMethod(method);
@@ -2216,6 +2222,8 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             Document reportDoc = method.getResponseBodyAsDocument();
             return retrieveQNodeTypeDefinitions(sessionInfo, reportDoc);
         } catch (IOException e) {
+            throw new RepositoryException(e);
+        } catch (ParserConfigurationException e) {
             throw new RepositoryException(e);
         } catch (DavException e) {
             throw ExceptionConverter.generate(e);

@@ -48,8 +48,7 @@ public class TestAll extends TestCase {
         suite.addTestSuite(ReplaceTest.class);
 
         // test related to NodeStateMerger
-        // temporarily disabled see JCR-2272 and JCR-2295
-        // suite.addTestSuite(ConcurrentImportTest.class);
+        suite.addTestSuite(ConcurrentImportTest.class);
         suite.addTestSuite(ConcurrentAddRemoveMoveTest.class);
         suite.addTestSuite(ConcurrentAddRemovePropertyTest.class);
         suite.addTestSuite(ConcurrentMixinModificationTest.class);
@@ -79,6 +78,8 @@ public class TestAll extends TestCase {
         suite.addTestSuite(PersistenceManagerTest.class);
 
         suite.addTestSuite(OverlappingNodeAddTest.class);
+
+        suite.addTestSuite(NPEandCMETest.class);
 
         return suite;
     }
