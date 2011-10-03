@@ -2,20 +2,14 @@
 
 For making jackalope work, we need some patches for Jackrabbit. We maintain here a forked version of the 2.2.x branch to not have to wait for jackrabbit to integrate them
 
-The branchname is 2.2-jackalope
+The branchname is trunk-jackalope
 
 # Patches needed for Jackalope to run
-
-## JCR-2454 : spi2dav: JSR 283 NodeType Management
-
-Jira Issue: https://issues.apache.org/jira/browse/JCR-2454 
-Commit: https://github.com/jackalope/jackrabbit/commit/28824634087ac49118e5f2a574884467db7d69a4
 
 ## JCR-3005 : Make it possible to get multiple nodes in one call via davex
 
 Jira Issue: https://issues.apache.org/jira/browse/JCR-3005
 Commit: https://github.com/jackalope/jackrabbit/commit/689f076eebf7508d1c2d5315cd046883818d82c3
-
 
 # Patches not really needed for Jackalope to run (but nice to have for our setups)
 
@@ -23,11 +17,6 @@ Commit: https://github.com/jackalope/jackrabbit/commit/689f076eebf7508d1c2d5315c
 
 Jira Issue: https://issues.apache.org/jira/browse/JCR-2968
 Commit: https://github.com/jackalope/jackrabbit/commit/6e977b43603b8f7eea886a96d62fbd266c4ca8c1
-
-## JCR-3004 : Check if a DAV-Request has a Label in the header, before checking if it's version-controlled
-
-Jira Issue: https://issues.apache.org/jira/browse/JCR-3004
-Commit: https://github.com/jackalope/jackrabbit/commit/423199a71b7cdc6b71713b0c232f23de1de2eb10
 
 # Download
 
