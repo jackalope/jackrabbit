@@ -243,7 +243,8 @@ public class SearchResourceImpl implements SearchResource {
 
             // get the path for the first selector and build
             // a webdav compliant resource path of it.
-            String itemPath = row.getPath();
+            // https://issues.apache.org/jira/browse/JCR-3089
+            final String itemPath = row.getPath(sn.get(0));
             // create a new ms-response for this row of the result set
             DavResourceLocator loc = locator.getFactory().createResourceLocator(locator.getPrefix(), locator.getWorkspacePath(), itemPath, false);
             String href = loc.getHref(true);
