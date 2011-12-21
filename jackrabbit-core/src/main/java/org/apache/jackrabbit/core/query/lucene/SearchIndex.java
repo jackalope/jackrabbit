@@ -41,11 +41,25 @@ import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.jackrabbit.core.HierarchyManager;
 import org.apache.jackrabbit.core.SessionImpl;
+import org.apache.jackrabbit.core.cluster.ChangeLogRecord;
+import org.apache.jackrabbit.core.cluster.ClusterNode;
+import org.apache.jackrabbit.core.cluster.ClusterRecord;
+import org.apache.jackrabbit.core.cluster.ClusterRecordDeserializer;
+import org.apache.jackrabbit.core.cluster.ClusterRecordProcessor;
+import org.apache.jackrabbit.core.cluster.LockRecord;
+import org.apache.jackrabbit.core.cluster.NamespaceRecord;
+import org.apache.jackrabbit.core.cluster.NodeTypeRecord;
+import org.apache.jackrabbit.core.cluster.PrivilegeRecord;
+import org.apache.jackrabbit.core.cluster.WorkspaceRecord;
 import org.apache.jackrabbit.core.fs.FileSystem;
 import org.apache.jackrabbit.core.fs.FileSystemException;
 import org.apache.jackrabbit.core.fs.FileSystemResource;
 import org.apache.jackrabbit.core.fs.local.LocalFileSystem;
 import org.apache.jackrabbit.core.id.NodeId;
+import org.apache.jackrabbit.core.journal.Journal;
+import org.apache.jackrabbit.core.journal.JournalException;
+import org.apache.jackrabbit.core.journal.Record;
+import org.apache.jackrabbit.core.journal.RecordIterator;
 import org.apache.jackrabbit.core.query.AbstractQueryHandler;
 import org.apache.jackrabbit.core.query.ExecutableQuery;
 import org.apache.jackrabbit.core.query.QueryHandler;
@@ -54,8 +68,10 @@ import org.apache.jackrabbit.core.query.lucene.directory.DirectoryManager;
 import org.apache.jackrabbit.core.query.lucene.directory.FSDirectoryManager;
 import org.apache.jackrabbit.core.query.lucene.hits.AbstractHitCollector;
 import org.apache.jackrabbit.core.session.SessionContext;
+import org.apache.jackrabbit.core.state.ItemState;
 import org.apache.jackrabbit.core.state.ItemStateException;
 import org.apache.jackrabbit.core.state.ItemStateManager;
+import org.apache.jackrabbit.core.state.NoSuchItemStateException;
 import org.apache.jackrabbit.core.state.NodeState;
 import org.apache.jackrabbit.core.state.PropertyState;
 import org.apache.jackrabbit.spi.Name;
@@ -546,6 +562,7 @@ public class SearchIndex extends AbstractQueryHandler {
             }
             index.createInitialIndex(context.getItemStateManager(),
                     context.getRootId(), rootPath);
+            checkPendingJournalChanges(context);
         }
         if (consistencyCheckEnabled
                 && (index.getRedoLogApplied() || forceConsistencyCheck)) {
@@ -633,7 +650,6 @@ public class SearchIndex extends AbstractQueryHandler {
             if (state != null) {
                 NodeId id = state.getNodeId();
                 addedIds.add(id);
-                removedIds.remove(id);
                 retrieveAggregateRoot(state, aggregateRoots);
 
                 try {
@@ -1466,13 +1482,10 @@ public class SearchIndex extends AbstractQueryHandler {
                         }
                         // make sure that fulltext fields are aligned properly
                         // first all stored fields, then remaining
-                        List<Fieldable> fulltextFields = new ArrayList<Fieldable>();
-                        fulltextFields.addAll(removeFields(doc, FieldNames.FULLTEXT));
-                        Collections.sort(fulltextFields, new Comparator<Fieldable>() {
-                            public int compare(Fieldable o1, Fieldable o2) {
-                                return Boolean.valueOf(o2.isStored()).compareTo(o1.isStored());
-                            }
-                        });
+                        Fieldable[] fulltextFields = doc
+                                .getFieldables(FieldNames.FULLTEXT);
+                        doc.removeFields(FieldNames.FULLTEXT);
+                        Arrays.sort(fulltextFields, FIELDS_COMPARATOR_STORED);
                         for (Fieldable f : fulltextFields) {
                             doc.add(f);
                         }
@@ -1529,29 +1542,24 @@ public class SearchIndex extends AbstractQueryHandler {
                         break;
                     }
                 }
+            } catch (NoSuchItemStateException e) {
+                // do not fail if aggregate cannot be created
+                log.info(
+                        "Exception while building indexing aggregate for {}. Node is not available {}.",
+                        state.getNodeId(), e.getMessage());
             } catch (Exception e) {
                 // do not fail if aggregate cannot be created
-                log.warn("Exception while building indexing aggregate for"
-                        + " node with id: " + state.getNodeId(), e);
+                log.warn("Exception while building indexing aggregate for "
+                        + state.getNodeId(), e);
             }
         }
     }
 
-    /**
-     * Removes the fields with the given <code>name</code> from the
-     * <code>document</code> and returns them in a collection.
-     *
-     * @param document the document.
-     * @param name     the name of the fields to remove.
-     * @return the removed fields.
-     */
-    protected final Collection<Fieldable> removeFields(Document document,
-                                                 String name) {
-        List<Fieldable> fields = new ArrayList<Fieldable>();
-        fields.addAll(Arrays.asList(document.getFieldables(name)));
-        document.removeFields(FieldNames.FULLTEXT);
-        return fields;
-    }
+    private static final Comparator<Fieldable> FIELDS_COMPARATOR_STORED = new Comparator<Fieldable>() {
+        public int compare(Fieldable o1, Fieldable o2) {
+            return Boolean.valueOf(o2.isStored()).compareTo(o1.isStored());
+        }
+    };
 
     /**
      * Returns the relative path from <code>nodeState</code> to
@@ -1587,29 +1595,73 @@ public class SearchIndex extends AbstractQueryHandler {
 
     /**
      * Retrieves the root of the indexing aggregate for <code>state</code> and
-     * puts it into <code>map</code>.
+     * puts it into <code>aggregates</code>  map.
      *
      * @param state the node state for which we want to retrieve the aggregate
      *              root.
-     * @param map   aggregate roots are collected in this map.
+     * @param aggregates aggregate roots are collected in this map.
      */
-    protected void retrieveAggregateRoot(
-            NodeState state, Map<NodeId, NodeState> map) {
-        if (indexingConfig != null) {
-            AggregateRule[] aggregateRules = indexingConfig.getAggregateRules();
-            if (aggregateRules == null) {
-                return;
-            }
+    protected void retrieveAggregateRoot(NodeState state,
+            Map<NodeId, NodeState> aggregates) {
+        retrieveAggregateRoot(state, aggregates, state.getNodeId().toString(), 0);
+    }
+    
+    /**
+     * Retrieves the root of the indexing aggregate for <code>state</code> and
+     * puts it into <code>aggregates</code> map.
+     * 
+     * @param state
+     *            the node state for which we want to retrieve the aggregate
+     *            root.
+     * @param aggregates
+     *            aggregate roots are collected in this map.
+     * @param originNodeId
+     *            the originating node, used for reporting only
+     * @param level
+     *            current aggregation level, used to limit recursive aggregation
+     *            of nodes that have the same type
+     */
+    private void retrieveAggregateRoot(NodeState state,
+            Map<NodeId, NodeState> aggregates, String originNodeId, long level) {
+        if (indexingConfig == null) {
+            return;
+        }
+        AggregateRule[] aggregateRules = indexingConfig.getAggregateRules();
+        if (aggregateRules == null) {
+            return;
+        }
+        for (AggregateRule aggregateRule : aggregateRules) {
+            NodeState root = null;
             try {
-                for (AggregateRule aggregateRule : aggregateRules) {
-                    NodeState root = aggregateRule.getAggregateRoot(state);
-                    if (root != null) {
-                        map.put(root.getNodeId(), root);
-                    }
-                }
+                root = aggregateRule.getAggregateRoot(state);
             } catch (Exception e) {
-                log.warn("Unable to get aggregate root for "
-                        + state.getNodeId(), e);
+                log.warn("Unable to get aggregate root for " + state.getNodeId(), e);
+            }
+            if (root == null) {
+                continue;
+            }
+            if (root.getNodeTypeName().equals(state.getNodeTypeName())) {
+                level++;
+            } else {
+                level = 0;
+            }
+
+            // JCR-2989 Support for embedded index aggregates
+            if ((aggregateRule.getRecursiveAggregationLimit() == 0)
+                    || (aggregateRule.getRecursiveAggregationLimit() != 0 && level <= aggregateRule
+                            .getRecursiveAggregationLimit())) {
+
+                // check if the update parent is already in the
+                // map, then all its parents are already there so I can
+                // skip this update subtree
+                if (aggregates.put(root.getNodeId(), root) == null) {
+                    retrieveAggregateRoot(root, aggregates, originNodeId, level);
+                }
+            } else {
+                log.warn(
+                        "Reached {} levels of recursive aggregation for nodeId {}, type {}, will stop at nodeId {}. Are you sure this did not occur by mistake? Please check the indexing-configuration.xml.",
+                        new Object[] { level, originNodeId,
+                                root.getNodeTypeName(), root.getNodeId() });
             }
         }
     }
@@ -1618,11 +1670,11 @@ public class SearchIndex extends AbstractQueryHandler {
      * Retrieves the root of the indexing aggregate for <code>removedIds</code>
      * and puts it into <code>map</code>.
      *
-     * @param removedIds     the ids of removed nodes.
-     * @param map            aggregate roots are collected in this map
+     * @param removedIds the ids of removed nodes.
+     * @param aggregates aggregate roots are collected in this map
      */
     protected void retrieveAggregateRoot(
-            Set<NodeId> removedIds, Map<NodeId, NodeState> map) {
+            Set<NodeId> removedIds, Map<NodeId, NodeState> aggregates) {
         if(removedIds.isEmpty() || indexingConfig == null){
             return;
         }
@@ -1648,8 +1700,14 @@ public class SearchIndex extends AbstractQueryHandler {
                             Document doc = reader.document(
                                     tDocs.doc(), FieldSelectors.UUID);
                             NodeId nId = new NodeId(doc.get(FieldNames.UUID));
-                            map.put(nId, (NodeState) ism.getItemState(nId));
+                            NodeState nodeState = (NodeState) ism.getItemState(nId);
+                            aggregates.put(nId, nodeState);
                             found++;
+
+                            // JCR-2989 Support for embedded index aggregates
+                            int sizeBefore = aggregates.size();
+                            retrieveAggregateRoot(nodeState, aggregates);
+                            found += aggregates.size() - sizeBefore;
                         }
                     }
                 } finally {
@@ -1658,6 +1716,10 @@ public class SearchIndex extends AbstractQueryHandler {
             } finally {
                 reader.release();
             }
+        } catch (NoSuchItemStateException e) {
+            log.info(
+                    "Exception while retrieving aggregate roots. Node is not available {}.",
+                    e.getMessage());
         } catch (Exception e) {
             log.warn("Exception while retrieving aggregate roots", e);
         }
@@ -2431,6 +2493,46 @@ public class SearchIndex extends AbstractQueryHandler {
         this.redoLogFactoryClass = className;
     }
 
+    /**
+     * In the case of an initial index build operation, this checks if there are
+     * some new nodes pending in the journal and tries to preemptively delete
+     * them, to keep the index consistent.
+     * 
+     * See JCR-3162
+     * 
+     * @param context
+     * @throws IOException
+     */
+    private void checkPendingJournalChanges(QueryHandlerContext context) {
+        ClusterNode cn = context.getClusterNode();
+        if (cn == null) {
+            return;
+        }
+
+        List<NodeId> addedIds = new ArrayList<NodeId>();
+        long rev = cn.getRevision();
+
+        List<ChangeLogRecord> changes = getChangeLogRecords(rev, context.getWorkspace());
+        Iterator<ChangeLogRecord> iterator = changes.iterator();
+        while (iterator.hasNext()) {
+            ChangeLogRecord record = iterator.next();
+            for (ItemState state : record.getChanges().addedStates()) {
+                if (!state.isNode()) {
+                    continue;
+                }
+                addedIds.add((NodeId) state.getId());
+            }
+        }
+        if (!addedIds.isEmpty()) {
+            Collection<NodeState> empty = Collections.emptyList();
+            try {
+                updateNodes(addedIds.iterator(), empty.iterator());
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+            }
+        }
+    }
+
     //----------------------------< internal >----------------------------------
 
     /**
@@ -2443,5 +2545,80 @@ public class SearchIndex extends AbstractQueryHandler {
         if (closed) {
             throw new IOException("query handler closed and cannot be used anymore.");
         }
+    }
+
+    /**
+     * Polls the underlying journal for events of the type ChangeLogRecord that
+     * happened after a given revision, on a given workspace.
+     *
+     * @param revision
+     *            starting revision
+     * @param workspace
+     *            the workspace name
+     * @return
+     */
+    private List<ChangeLogRecord> getChangeLogRecords(long revision,
+            final String workspace) {
+        log.debug(
+                "Get changes from the Journal for revision {} and workspace {}.",
+                revision, workspace);
+        ClusterNode cn = getContext().getClusterNode();
+        if (cn == null) {
+            return Collections.emptyList();
+        }
+        Journal journal = cn.getJournal();
+        final List<ChangeLogRecord> events = new ArrayList<ChangeLogRecord>();
+        ClusterRecordDeserializer deserializer = new ClusterRecordDeserializer();
+        RecordIterator records = null;
+        try {
+            records = journal.getRecords(revision);
+            while (records.hasNext()) {
+                Record record = records.nextRecord();
+                if (!record.getProducerId().equals(cn.getId())) {
+                    continue;
+                }
+                ClusterRecord r = null;
+                try {
+                    r = deserializer.deserialize(record);
+                } catch (JournalException e) {
+                    log.error(
+                            "Unable to read revision '" + record.getRevision()
+                                    + "'.", e);
+                }
+                if (r == null) {
+                    continue;
+                }
+                r.process(new ClusterRecordProcessor() {
+                    public void process(ChangeLogRecord record) {
+                        String eventW = record.getWorkspace();
+                        if (eventW != null ? eventW.equals(workspace) : workspace == null) {
+                            events.add(record);
+                        }
+                    }
+
+                    public void process(LockRecord record) {
+                    }
+
+                    public void process(NamespaceRecord record) {
+                    }
+
+                    public void process(NodeTypeRecord record) {
+                    }
+
+                    public void process(PrivilegeRecord record) {
+                    }
+
+                    public void process(WorkspaceRecord record) {
+                    }
+                });
+            }
+        } catch (JournalException e1) {
+            log.error(e1.getMessage(), e1);
+        } finally {
+            if (records != null) {
+                records.close();
+            }
+        }
+        return events;
     }
 }

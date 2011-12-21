@@ -26,10 +26,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Random;
 
 import javax.jcr.RepositoryException;
 import javax.sql.DataSource;
@@ -59,7 +56,6 @@ import org.apache.jackrabbit.core.util.db.ConnectionHelper;
 import org.apache.jackrabbit.core.util.db.DatabaseAware;
 import org.apache.jackrabbit.core.util.db.DbUtility;
 import org.apache.jackrabbit.core.util.db.StreamWrapper;
-import org.apache.jackrabbit.spi.commons.name.NameFactoryImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -701,231 +697,6 @@ public class BundleDbPersistenceManager
     }
 
     /**
-     * Checks a single bundle for inconsistencies, ie. inexistent child nodes
-     * and inexistent parents.
-     *
-     * @param id node id for the bundle to check
-     * @param bundle the bundle to check
-     * @param fix if <code>true</code>, repair things that can be repaired
-     * @param modifications if <code>fix == true</code>, collect the repaired
-     * {@linkplain NodePropBundle bundles} here
-     */
-    protected void checkBundleConsistency(NodeId id, NodePropBundle bundle,
-                                          boolean fix, Collection<NodePropBundle> modifications) {
-        //log.info(name + ": checking bundle '" + id + "'");
-
-        // skip all system nodes except root node
-        if (id.toString().endsWith("babecafebabe")
-                && !id.toString().equals("cafebabe-cafe-babe-cafe-babecafebabe")) {
-            return;
-        }
-
-        // look at the node's children
-        Collection<NodePropBundle.ChildNodeEntry> missingChildren = new ArrayList<NodePropBundle.ChildNodeEntry>();
-        for (NodePropBundle.ChildNodeEntry entry : bundle.getChildNodeEntries()) {
-
-            // skip check for system nodes (root, system root, version storage, node types)
-            if (entry.getId().toString().endsWith("babecafebabe")) {
-                continue;
-            }
-
-            try {
-                // analyze child node bundles
-                NodePropBundle child = loadBundle(entry.getId());
-                if (child == null) {
-                    log.error(
-                            "NodeState '" + id + "' references inexistent child"
-                            + " '" + entry.getName() + "' with id "
-                            + "'" + entry.getId() + "'");
-                    missingChildren.add(entry);
-                } else {
-                    NodeId cp = child.getParentId();
-                    if (cp == null) {
-                        log.error("ChildNode has invalid parent uuid: <null>");
-                    } else if (!cp.equals(id)) {
-                        log.error("ChildNode has invalid parent uuid: '" + cp + "' (instead of '" + id + "')");
-                    }
-                }
-            } catch (ItemStateException e) {
-                // problem already logged (loadBundle called with logDetailedErrors=true)
-            }
-        }
-        // remove child node entry (if fixing is enabled)
-        if (fix && !missingChildren.isEmpty()) {
-            for (NodePropBundle.ChildNodeEntry entry : missingChildren) {
-                bundle.getChildNodeEntries().remove(entry);
-            }
-            modifications.add(bundle);
-        }
-
-        // check parent reference
-        NodeId parentId = bundle.getParentId();
-        try {
-            // skip root nodes (that point to itself)
-            if (parentId != null && !id.toString().endsWith("babecafebabe")) {
-                if (loadBundle(parentId) == null) {
-                    log.error("NodeState '" + id + "' references inexistent parent uuid '" + parentId + "'");
-                }
-            	NodePropBundle parentBundle = loadBundle(parentId);
-            	Iterator<NodePropBundle.ChildNodeEntry> childNodeIter = parentBundle.getChildNodeEntries().iterator();
-            	boolean found = false;
-            	while (childNodeIter.hasNext()) {
-                    NodePropBundle.ChildNodeEntry entry = childNodeIter.next();
-                    if (entry.getId().equals(id)){
-                    	found = true;
-                    	break;
-                    }
-            	}
-            	if (!found) {
-            		log.error("NodeState '" + id + "' is not referenced by its parent node '" + parentId + "'");
-            		int l = (int) System.currentTimeMillis();
-            		int r = new Random().nextInt();
-            		int n = l + r; 
-            		String nodeName = Integer.toHexString(n);
-            		parentBundle.addChildNodeEntry(NameFactoryImpl.getInstance().create("{}" + nodeName), id);
-            		log.info("NodeState '" + id + "' adds itself to its parent node '" + parentId + "' with a new name '" + nodeName+ "'");
-            		modifications.add(parentBundle);
-            	}
-            }
-        } catch (ItemStateException e) {
-            log.error("Error reading node '" + parentId + "' (parent of '" + id + "'): " + e);
-        }
-    }
-
-    public void checkConsistency(String[] uuids, boolean recursive, boolean fix) {
-        int count = 0;
-        int total = 0;
-        Collection<NodePropBundle> modifications = new ArrayList<NodePropBundle>();        
-        
-        if (uuids == null) {
-            // get all node bundles in the database with a single sql statement,
-            // which is (probably) faster than loading each bundle and traversing the tree              
-            ResultSet rs = null;
-            try {               
-                String sql = "select count(*) from " + schemaObjectPrefix + "BUNDLE";
-                rs = conHelper.exec(sql, new Object[0], false, 0);
-                try {
-                    if (!rs.next()) {
-                        log.error("Could not retrieve total number of bundles. empty result set.");
-                        return;
-                    }
-                    total = rs.getInt(1);
-                } finally {
-                    DbUtility.close(rs);
-                }
-                if (getStorageModel() == SM_BINARY_KEYS) {
-                    sql = "select NODE_ID from " + schemaObjectPrefix + "BUNDLE";
-                } else {
-                    sql = "select NODE_ID_HI, NODE_ID_LO from " + schemaObjectPrefix + "BUNDLE";
-                }
-                rs = conHelper.exec(sql, new Object[0], false, 0);
-
-                // iterate over all node bundles in the db
-                while (rs.next()) {
-                    NodeId id;
-                    if (getStorageModel() == SM_BINARY_KEYS) {
-                        id = new NodeId(rs.getBytes(1));
-                    } else {
-                        id = new NodeId(rs.getLong(1), rs.getLong(2));
-                    }
-
-                    // issuing 2nd statement to circumvent issue JCR-1474
-                    ResultSet bRs = null;
-                    try {
-                        bRs = conHelper.exec(bundleSelectSQL, getKey(id), false, 0);
-                        if (!bRs.next()) {
-                            throw new SQLException("bundle cannot be retrieved?");
-                        }
-                        // parse and check bundle
-                        NodePropBundle bundle = readBundle(id, bRs, 1);
-                        checkBundleConsistency(id, bundle, fix, modifications);
-                    } catch (SQLException e) {
-                        log.error("Unable to parse bundle " + id, e);
-                    } finally {
-                        DbUtility.close(bRs);
-                    }
-
-                    count++;
-                    if (count % 1000 == 0) {
-                        log.info(name + ": checked " + count + "/" + total + " bundles...");
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Error loading bundle", e);
-            } finally {                 
-                DbUtility.close(rs);
-                total = count;
-            }
-        } else {
-            // check only given uuids, handle recursive flag
-
-            // 1) convert uuid array to modifiable list
-            // 2) for each uuid do
-            //     a) load node bundle
-            //     b) check bundle, store any bundle-to-be-modified in collection
-            //     c) if recursive, add child uuids to list of uuids
-
-            List<NodeId> idList = new ArrayList<NodeId>(uuids.length);
-            // convert uuid string array to list of UUID objects
-            for (int i = 0; i < uuids.length; i++) {
-                try {
-                    idList.add(new NodeId(uuids[i]));
-                } catch (IllegalArgumentException e) {
-                    log.error("Invalid uuid for consistency check, skipping: '" + uuids[i] + "': " + e);
-                }
-            }
-            
-            // iterate over UUIDs (including ones that are newly added inside the loop!)
-            for (int i = 0; i < idList.size(); i++) {
-                NodeId id = idList.get(i);
-                try {
-                    // load the node from the database
-                    NodePropBundle bundle = loadBundle(id);
-
-                    if (bundle == null) {
-                        log.error("No bundle found for uuid '" + id + "'");
-                        continue;
-                    }
-
-                    checkBundleConsistency(id, bundle, fix, modifications);
-
-                    if (recursive) {
-                        for (NodePropBundle.ChildNodeEntry entry : bundle.getChildNodeEntries()) {
-                            idList.add(entry.getId());
-                        }
-                    }
-
-                    count++;
-                    if (count % 1000 == 0) {
-                        log.info(name + ": checked " + count + "/" + idList.size() + " bundles...");
-                    }
-                } catch (ItemStateException e) {
-                    // problem already logged (loadBundle called with logDetailedErrors=true)
-                }
-            }
-
-            total = idList.size();
-        }
-
-        // repair collected broken bundles
-        if (fix && !modifications.isEmpty()) {
-            log.info(name + ": Fixing " + modifications.size() + " inconsistent bundle(s)...");
-            for (NodePropBundle bundle : modifications) {
-                try {
-                    log.info(name + ": Fixing bundle '" + bundle.getId() + "'");
-                    bundle.markOld(); // use UPDATE instead of INSERT
-                    storeBundle(bundle);
-                    evictBundle(bundle.getId());
-                } catch (ItemStateException e) {
-                    log.error(name + ": Error storing fixed bundle: " + e);
-                }
-            }
-        }
-
-        log.info(name + ": checked " + count + "/" + total + " bundles.");
-    }
-
-    /**
      * {@inheritDoc}
      */
     public synchronized void close() throws Exception {
@@ -998,7 +769,7 @@ public class BundleDbPersistenceManager
     /**
      * {@inheritDoc}
      */
-    public synchronized Iterable<NodeId> getAllNodeIds(NodeId bigger, int maxCount)
+    public synchronized List<NodeId> getAllNodeIds(NodeId bigger, int maxCount)
             throws ItemStateException, RepositoryException {
         ResultSet rs = null;
         try {

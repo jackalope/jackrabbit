@@ -21,6 +21,7 @@ import org.apache.jackrabbit.commons.cnd.CompactNodeTypeDefWriter;
 import org.apache.jackrabbit.commons.cnd.DefinitionBuilderFactory;
 import org.apache.jackrabbit.commons.cnd.ParseException;
 import org.apache.jackrabbit.commons.cnd.TemplateBuilderFactory;
+import org.apache.jackrabbit.commons.webdav.AtomFeedConstants;
 import org.apache.jackrabbit.webdav.DavException;
 import org.apache.jackrabbit.webdav.DavMethods;
 import org.apache.jackrabbit.webdav.DavResource;
@@ -70,6 +71,7 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -143,7 +145,7 @@ public class WorkspaceResourceImpl extends AbstractResource
     //--------------------------------------------------------< DavResource >---
 
     public String getSupportedMethods() {
-        StringBuffer sb = new StringBuffer(DavResource.METHODS);
+        StringBuilder sb = new StringBuilder(DavResource.METHODS);
         sb.append(", ");
         sb.append(DeltaVResource.METHODS_INCL_MKWORKSPACE);
         sb.append(", ");
@@ -155,10 +157,18 @@ public class WorkspaceResourceImpl extends AbstractResource
     }
 
     /**
-     * @return true
+     * @return true if the workspace name (see {@link #getDisplayName()} is
+     * present in the list of available workspace names such as exposed by
+     * the editing JCR session.
      */
     public boolean exists() {
-        return true;
+        try {
+            List<String> available = Arrays.asList(getRepositorySession().getWorkspace().getAccessibleWorkspaceNames());
+            return available.contains(getDisplayName());
+        } catch (RepositoryException e) {
+            log.warn(e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -189,12 +199,14 @@ public class WorkspaceResourceImpl extends AbstractResource
     }
 
     /**
-     * Sets content lengths to '0' and retrieves the modification time.
-     *
      * @param outputContext
      * @throws IOException
      */
     public void spool(OutputContext outputContext) throws IOException {
+
+        outputContext.setProperty("Link", "<?" + EventJournalResourceImpl.RELURIFROMWORKSPACE
+                + ">; title=\"Event Journal\"; rel=alternate; type=\"" + AtomFeedConstants.MEDIATYPE + "\"");
+
         if (outputContext.hasStream()) {
             Session session = getRepositorySession();
             Repository rep = session.getRepository();
@@ -203,10 +215,13 @@ public class WorkspaceResourceImpl extends AbstractResource
             String repVersion = rep.getDescriptor(Repository.REP_VERSION_DESC);
             String repostr = repName + " " + repVersion;
 
-            StringBuffer sb = new StringBuffer();
+            StringBuilder sb = new StringBuilder();
             sb.append("<html><head><title>");
             sb.append(repostr);
-            sb.append("</title></head>");
+            sb.append("</title>");
+            sb.append("<link rel=alternate type=\"" + AtomFeedConstants.MEDIATYPE
+                    + "\" title=\"Event Journal\" href=\"?" + EventJournalResourceImpl.RELURIFROMWORKSPACE + "\">");
+            sb.append("</head>");
             sb.append("<body><h2>").append(repostr).append("</h2><ul>");
             sb.append("<li><a href=\"..\">..</a></li>");
             DavResourceIterator it = getMembers();
@@ -243,7 +258,7 @@ public class WorkspaceResourceImpl extends AbstractResource
     public DavResource getCollection() {
         DavResource collection = null;
         // create location with 'null' values for workspace-path and resource-path
-        DavResourceLocator parentLoc = getLocator().getFactory().createResourceLocator(getLocator().getPrefix(), null, null);
+        DavResourceLocator parentLoc = getLocator().getFactory().createResourceLocator(getLocator().getPrefix(), null, null, false);
         try {
             collection = createResourceFromLocator(parentLoc);
         } catch (DavException e) {

@@ -129,6 +129,7 @@ public interface JcrRemotingConstants {
     public static final String JCR_VALUES_LN = "values";
     public static final String JCR_LENGTH_LN = "length";
     public static final String JCR_LENGTHS_LN = "lengths";
+    public static final String JCR_GET_STRING_LN = "getstring";
 
     public static final String JCR_NAMESPACES_LN = "namespaces";
     public static final String JCR_NODETYPES_CND_LN = "nodetypes-cnd";
@@ -149,4 +150,30 @@ public interface JcrRemotingConstants {
     public static final String REPORT_NODETYPES = "nodetypes";
     public static final String REPORT_REGISTERED_NAMESPACES = "registerednamespaces";
     public static final String REPORT_REPOSITORY_DESCRIPTORS = "repositorydescriptors";
+
+    /**
+     * RFC 5988 relation type for user data
+     * <p>
+     * Used to transport JCR User Data inside an HTTP request.
+     * <p>
+     * Example:
+     * 
+     * <pre>
+     * Link: <data:,my%20user%data>, rel="<i>RELATION_USER_DATA</i>"
+     * </pre>
+     */
+    public static final String RELATION_USER_DATA = NS_URI + "/user-data";
+
+    /**
+     * RFC 5988 relation type for remote session identification
+     * <p>
+     * Used to transport an identifier for the remote session.
+     * <p>
+     * Example:
+     * 
+     * <pre>
+     * Link: <urn:uuid:96d3c6fe-1073-11e1-a3c0-00059a3c7a00>, rel="<i>RELATION_REMOTE_SESSION_ID</i>"
+     * </pre>
+     */
+    public static final String RELATION_REMOTE_SESSION_ID = NS_URI + "/session-id";
 }

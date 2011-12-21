@@ -73,20 +73,6 @@
                   org.apache.jackrabbit.test.api.lock.LockManagerTest#testAddInvalidLockToken
                   org.apache.jackrabbit.test.api.lock.LockManagerTest#testAddLockTokenToAnotherSession
                   org.apache.jackrabbit.test.api.lock.LockManagerTest#testLockTransfer2
-                  <!-- JCR-2539 : user data (observation) -->
-                  org.apache.jackrabbit.test.api.observation.GetUserDataTest
-                  <!-- JCR-2540 : move/reorder (observation) -->
-                  org.apache.jackrabbit.test.api.observation.NodeMovedTest
-                  org.apache.jackrabbit.test.api.observation.NodeReorderTest
-                  org.apache.jackrabbit.test.api.observation.GetIdentifierTest#testNodeMoved
-                  org.apache.jackrabbit.test.api.observation.GetIdentifierTest#testNodeRemoved
-                  org.apache.jackrabbit.test.api.observation.WorkspaceOperationTest#testRename
-                  org.apache.jackrabbit.test.api.observation.WorkspaceOperationTest#testMove
-                  <!-- JCR-2541 : event journal -->
-                  org.apache.jackrabbit.test.api.observation.EventJournalTest
-                  <!-- JCR-2542 : event filter -->
-                  org.apache.jackrabbit.test.api.observation.AddEventListenerTest#testNodeType
-                  org.apache.jackrabbit.test.api.observation.AddEventListenerTest#testNoLocalTrue
                   <!-- JCR-2533 : missing impl of checkQueryStatement -->
                   org.apache.jackrabbit.test.api.query.CreateQueryTest#testUnknownQueryLanguage
                   <!-- JCR-2543 : query offset -->

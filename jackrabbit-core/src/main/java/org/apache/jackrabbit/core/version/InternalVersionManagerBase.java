@@ -17,6 +17,7 @@
 package org.apache.jackrabbit.core.version;
 
 import static org.apache.jackrabbit.spi.commons.name.NameConstants.JCR_ACTIVITY;
+import static org.apache.jackrabbit.spi.commons.name.NameConstants.JCR_ROOTVERSION;
 import static org.apache.jackrabbit.spi.commons.name.NameConstants.JCR_VERSIONHISTORY;
 import static org.apache.jackrabbit.spi.commons.name.NameConstants.MIX_VERSIONABLE;
 
@@ -31,6 +32,7 @@ import javax.jcr.version.VersionException;
 import org.apache.jackrabbit.core.id.NodeId;
 import org.apache.jackrabbit.core.id.NodeIdFactory;
 import org.apache.jackrabbit.core.nodetype.NodeTypeRegistry;
+import org.apache.jackrabbit.core.state.ChildNodeEntry;
 import org.apache.jackrabbit.core.state.ItemStateException;
 import org.apache.jackrabbit.core.state.LocalItemStateManager;
 import org.apache.jackrabbit.core.state.NodeReferences;
@@ -149,6 +151,9 @@ abstract class InternalVersionManagerBase implements InternalVersionManager {
             NodeStateEx parent = getParentNode(getHistoryRoot(), uuid, null);
             if (parent != null && parent.hasNode(name)) {
                 NodeStateEx history = parent.getNode(name, 1);
+                if (history == null) {
+                    throw new InconsistentVersioningState("Unexpected failure to get child node " + name + " on parent node" + parent.getNodeId());
+                }
                 return getVersionHistory(history.getNodeId());
             } else {
                 throw new ItemNotFoundException("Version history of node " + id + " not found.");
@@ -300,11 +305,14 @@ abstract class InternalVersionManagerBase implements InternalVersionManager {
     }
 
     /**
-     * {@inheritDoc}
+     * Returns information about the version history of the specified node
+     * or <code>null</code> when unavailable.
+     *
+     * @param vNode node whose version history should be returned
+     * @return identifiers of the version history and root version nodes
+     * @throws RepositoryException if an error occurs
      */
-    public VersionHistoryInfo getVersionHistory(Session session, NodeState node,
-                                                NodeId copiedFrom)
-            throws RepositoryException {
+    public VersionHistoryInfo getVersionHistoryInfoForNode(NodeState node) throws RepositoryException {
         VersionHistoryInfo info = null;
 
         VersioningLock.ReadLock lock = acquireReadLock();
@@ -315,14 +323,31 @@ abstract class InternalVersionManagerBase implements InternalVersionManager {
             NodeStateEx parent = getParentNode(getHistoryRoot(), uuid, null);
             if (parent != null && parent.hasNode(name)) {
                 NodeStateEx history = parent.getNode(name, 1);
-                Name root = NameConstants.JCR_ROOTVERSION;
-                info = new VersionHistoryInfo(
-                        history.getNodeId(),
-                        history.getState().getChildNodeEntry(root, 1).getId());
+                if (history == null) {
+                    throw new InconsistentVersioningState("Unexpected failure to get child node " + name + " on parent node " + parent.getNodeId());
+                }
+                ChildNodeEntry rootv = history.getState().getChildNodeEntry(JCR_ROOTVERSION, 1);
+                if (rootv == null) {
+                    throw new InconsistentVersioningState("missing child node entry for " + JCR_ROOTVERSION + " on version history node " + history.getNodeId(),
+                            history.getNodeId(), null);
+                }
+                info = new VersionHistoryInfo(history.getNodeId(),
+                        rootv.getId());
             }
         } finally {
             lock.release();
         }
+
+        return info;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public VersionHistoryInfo getVersionHistory(Session session, NodeState node,
+                                                NodeId copiedFrom)
+            throws RepositoryException {
+        VersionHistoryInfo info = getVersionHistoryInfoForNode(node);
 
         if (info == null) {
             info = createVersionHistory(session, node, copiedFrom);
@@ -546,12 +571,13 @@ abstract class InternalVersionManagerBase implements InternalVersionManager {
         NodeStateEx n = parent;
         for (int i = 0; i < 3; i++) {
             Name name = getName(uuid.substring(i * 2, i * 2 + 2));
-            if (n.hasNode(name)) {
-                n = n.getNode(name, 1);
+            NodeStateEx childn = n.getNode(name, 1);
+            if (childn != null) {
+                n = childn;
             } else if (interNT != null) {
-                n.addNode(name, interNT, null, false);
+                childn = n.addNode(name, interNT, null, false);
                 n.store();
-                n = n.getNode(name, 1);
+                n = childn;
             } else {
                 return null;
             }

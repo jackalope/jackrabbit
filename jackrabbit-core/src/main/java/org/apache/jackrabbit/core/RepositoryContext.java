@@ -16,9 +16,14 @@
  */
 package org.apache.jackrabbit.core;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
 
+import javax.jcr.RepositoryException;
+
 import org.apache.jackrabbit.core.cluster.ClusterNode;
+import org.apache.jackrabbit.core.config.RepositoryConfig;
 import org.apache.jackrabbit.core.data.DataStore;
 import org.apache.jackrabbit.core.fs.FileSystem;
 import org.apache.jackrabbit.core.id.NodeId;
@@ -27,6 +32,8 @@ import org.apache.jackrabbit.core.nodetype.NodeTypeRegistry;
 import org.apache.jackrabbit.core.security.JackrabbitSecurityManager;
 import org.apache.jackrabbit.core.security.authorization.PrivilegeRegistry;
 import org.apache.jackrabbit.core.state.ItemStateCacheFactory;
+import org.apache.jackrabbit.core.stats.RepositoryStatisticsImpl;
+import org.apache.jackrabbit.core.stats.StatManager;
 import org.apache.jackrabbit.core.version.InternalVersionManagerImpl;
 
 /**
@@ -107,6 +114,16 @@ public class RepositoryContext {
             new JackrabbitThreadPool();
 
     /**
+     * Repository statistics collector.
+     */
+    private final RepositoryStatisticsImpl statistics;
+
+    /**
+     * The Statistics manager, handles statistics
+     */
+    private StatManager statManager;
+
+    /**
      * Creates a component context for the given repository.
      *
      * @param repository repository instance
@@ -114,6 +131,41 @@ public class RepositoryContext {
     RepositoryContext(RepositoryImpl repository) {
         assert repository != null;
         this.repository = repository;
+        this.statistics = new RepositoryStatisticsImpl(executor);
+        this.statManager = new StatManager();
+    }
+
+    /**
+     * Starts a repository with the given configuration and returns
+     * the internal component context of the started repository.
+     *
+     * @since Apache Jackrabbit 2.3.1
+     * @param config repository configuration
+     * @return component context of the repository
+     * @throws RepositoryException if the repository could not be started
+     */
+    public static RepositoryContext create(RepositoryConfig config)
+            throws RepositoryException {
+        RepositoryImpl repository = RepositoryImpl.create(config);
+        return repository.getRepositoryContext();
+    }
+
+    /**
+     * Starts a repository in the given directory and returns the
+     * internal component context of the started repository. If needed,
+     * the directory is created and a default repository configuration
+     * is installed inside it.
+     *
+     * @since Apache Jackrabbit 2.3.1
+     * @see RepositoryConfig#install(File)
+     * @param dir repository directory
+     * @return component context of the repository
+     * @throws RepositoryException if the repository could not be started
+     * @throws IOException if the directory could not be initialized
+     */
+    public static RepositoryContext install(File dir)
+            throws RepositoryException, IOException {
+        return create(RepositoryConfig.install(dir));
     }
 
     /**
@@ -359,6 +411,22 @@ public class RepositoryContext {
 
     public NodeIdFactory getNodeIdFactory() {
         return nodeIdFactory;
+    }
+
+    /**
+     * Returns the repository statistics collector.
+     *
+     * @return repository statistics collector
+     */
+    public RepositoryStatisticsImpl getRepositoryStatistics() {
+        return statistics;
+    }
+
+    /**
+     * @return the statistics manager object
+     */
+    public StatManager getStatManager() {
+        return statManager;
     }
 
 }

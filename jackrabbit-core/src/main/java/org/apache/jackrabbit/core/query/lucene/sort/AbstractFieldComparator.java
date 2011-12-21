@@ -21,7 +21,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.jackrabbit.core.query.lucene.FieldComparatorBase;
+import org.apache.jackrabbit.core.query.lucene.FieldNames;
 import org.apache.jackrabbit.core.query.lucene.MultiIndexReader;
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
 
 /**
@@ -33,7 +35,7 @@ public abstract class AbstractFieldComparator extends FieldComparatorBase {
     /**
      * The values for comparing.
      */
-    private final Comparable[] values;
+    private final Comparable<?>[] values;
 
     /**
      * The index readers.
@@ -90,7 +92,7 @@ public abstract class AbstractFieldComparator extends FieldComparatorBase {
      * @param value  value for adding
      */
     @Override
-    public void setValue(int slot, Comparable value) {
+    public void setValue(int slot, Comparable<?> value) {
         values[slot] = value;
     }
 
@@ -101,7 +103,7 @@ public abstract class AbstractFieldComparator extends FieldComparatorBase {
      * @return  the retrieved value
      */
     @Override
-    public Comparable getValue(int slot) {
+    public Comparable<?> getValue(int slot) {
         return values[slot];
     }
 
@@ -137,5 +139,12 @@ public abstract class AbstractFieldComparator extends FieldComparatorBase {
         else {
             readers.add(reader);
         }
+    }
+
+    protected String getUUIDForIndex(int doc) throws IOException {
+        int idx = readerIndex(doc);
+        IndexReader reader = readers.get(idx);
+        Document document = reader.document(doc - starts[idx]);
+        return document.get(FieldNames.UUID);
     }
 }

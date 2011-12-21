@@ -17,13 +17,18 @@
 package org.apache.jackrabbit.webdav.jcr.observation;
 
 import org.apache.jackrabbit.commons.webdav.EventUtil;
+import org.apache.jackrabbit.commons.webdav.JcrRemotingConstants;
+import org.apache.jackrabbit.server.SessionProviderImpl;
+import org.apache.jackrabbit.spi.Name;
+import org.apache.jackrabbit.spi.commons.AdditionalEventInfo;
+import org.apache.jackrabbit.spi.commons.SessionExtensions;
 import org.apache.jackrabbit.webdav.DavException;
 import org.apache.jackrabbit.webdav.DavResourceLocator;
 import org.apache.jackrabbit.webdav.DavServletResponse;
 import org.apache.jackrabbit.webdav.transaction.TransactionResource;
 import org.apache.jackrabbit.webdav.jcr.transaction.TransactionListener;
-import org.apache.jackrabbit.webdav.jcr.JcrDavSession;
 import org.apache.jackrabbit.webdav.jcr.JcrDavException;
+import org.apache.jackrabbit.webdav.jcr.JcrDavSession;
 import org.apache.jackrabbit.webdav.observation.EventBundle;
 import org.apache.jackrabbit.webdav.observation.EventDiscovery;
 import org.apache.jackrabbit.webdav.observation.EventType;
@@ -40,8 +45,12 @@ import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import com.sun.org.apache.xalan.internal.xsltc.dom.ExtendedSAX;
+
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
+import javax.jcr.UnsupportedRepositoryOperationException;
+import javax.jcr.Value;
 import javax.jcr.observation.Event;
 import javax.jcr.observation.EventIterator;
 import javax.jcr.observation.EventListener;
@@ -71,6 +80,7 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
     private final String subscriptionId = UUID.randomUUID().toString();
     private final List<EventBundle> eventBundles = new ArrayList<EventBundle>();
     private final ObservationManager obsMgr;
+    private final Session session;
 
     /**
      * Create a new <code>Subscription</code> with the given {@link SubscriptionInfo}
@@ -85,9 +95,9 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
             throws DavException {
         setInfo(info);
         locator = resource.getLocator();
-        Session s = JcrDavSession.getRepositorySession(resource.getSession());
+        session = JcrDavSession.getRepositorySession(resource.getSession());
         try {
-            obsMgr = s.getWorkspace().getObservationManager();
+            obsMgr = session.getWorkspace().getObservationManager();
         } catch (RepositoryException e) {
             throw new DavException(DavServletResponse.SC_INTERNAL_SERVER_ERROR, e);
         }
@@ -101,6 +111,15 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
      */
     public String getSubscriptionId() {
         return subscriptionId;
+    }
+
+    public boolean eventsProvideNodeTypeInformation() {
+        String t = session.getRepository().getDescriptor("org.apache.jackrabbit.spi.commons.AdditionalEventInfo");
+        return t == null ? false : Boolean.parseBoolean(t);
+    }
+
+    public boolean eventsProvideNoLocalFlag() {
+        return session instanceof SessionExtensions;
     }
 
     //----------------------------------------------------< XmlSerializable >---
@@ -125,6 +144,12 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
             Element id = DomUtil.addChildElement(subscr, XML_SUBSCRIPTIONID, NAMESPACE);
             id.appendChild(DomUtil.hrefToXml(getSubscriptionId(), document));
         }
+
+        DomUtil.addChildElement(subscr, XML_EVENTSWITHTYPES, NAMESPACE,
+                Boolean.toString(eventsProvideNodeTypeInformation()));
+        DomUtil.addChildElement(subscr, XML_EVENTSWITHLOCALFLAG, NAMESPACE,
+                Boolean.toString(eventsProvideNoLocalFlag()));
+
         return subscr;
     }
 
@@ -428,11 +453,37 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
 
         public Element toXml(Document document) {
             Element bundle = DomUtil.createElement(document, XML_EVENTBUNDLE, NAMESPACE);
+            // TODO: this appears to be unused now
             if (transactionId != null) {
                 DomUtil.setAttribute(bundle, XML_EVENT_TRANSACTION_ID, NAMESPACE, transactionId);
             }
+
+            boolean localFlagSet = false;
+
             while (events.hasNext()) {
                 Event event = events.nextEvent();
+
+                if (!localFlagSet) {
+                    // obtain remote session identifier
+                    localFlagSet = true;
+                    String forSessionId = (String) session
+                            .getAttribute(SessionProviderImpl.ATTRIBUTE_SESSION_ID);
+                    // calculate "local" flags
+                    if (forSessionId != null
+                            && event instanceof AdditionalEventInfo) {
+                        try {
+                            String eventforSessionId = (String) ((AdditionalEventInfo) event)
+                                    .getSessionAttribute(SessionProviderImpl.ATTRIBUTE_SESSION_ID);
+                            boolean isLocal = forSessionId
+                                    .equals(eventforSessionId);
+                            DomUtil.setAttribute(bundle, XML_EVENT_LOCAL,
+                                    NAMESPACE, Boolean.toString(isLocal));
+                        } catch (UnsupportedRepositoryOperationException ex) {
+                            // optional feature
+                        }
+                    }
+                }
+
                 Element eventElem = DomUtil.addChildElement(bundle, XML_EVENT, NAMESPACE);
                 // href
                 String eHref = "";
@@ -449,6 +500,24 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
                 eType.appendChild(getEventType(event.getType()).toXml(document));
                 // user id
                 DomUtil.addChildElement(eventElem, XML_EVENTUSERID, NAMESPACE, event.getUserID());
+
+                // try to compute nodetype information
+                if (event instanceof AdditionalEventInfo) {
+                    try {
+                        DomUtil.addChildElement(eventElem,
+                                XML_EVENTPRIMARNODETYPE, NAMESPACE,
+                                ((AdditionalEventInfo) event)
+                                        .getPrimaryNodeTypeName().toString());
+                        for (Name mixin : ((AdditionalEventInfo) event)
+                                .getMixinTypeNames()) {
+                            DomUtil.addChildElement(eventElem,
+                                    XML_EVENTMIXINNODETYPE, NAMESPACE,
+                                    mixin.toString());
+                        }
+                    } catch (UnsupportedRepositoryOperationException ex) {
+                        // optional
+                    }
+                }
 
                 // Additional JCR 2.0 event information
                 // user data
@@ -472,10 +541,10 @@ public class SubscriptionImpl implements Subscription, ObservationConstants, Eve
                 // info
                 Element info = DomUtil.addChildElement(eventElem, XML_EVENTINFO, NAMESPACE);
                 try {
-                    @SuppressWarnings({"RawUseOfParameterizedType"}) Map m = event.getInfo();
-                    for (Object o : m.keySet()) {
-                        String key = o.toString();
-                        Object value = m.get(key);
+                    Map<?, ?> m = event.getInfo();
+                    for (Map.Entry<?, ?> entry : m.entrySet()) {
+                        String key = entry.getKey().toString();
+                        Object value = entry.getValue();
                         if (value != null) {
                             DomUtil.addChildElement(info, key, Namespace.EMPTY_NAMESPACE, value.toString());
                         } else {

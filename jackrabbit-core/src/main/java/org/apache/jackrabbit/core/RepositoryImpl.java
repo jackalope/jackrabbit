@@ -605,7 +605,7 @@ public class RepositoryImpl extends AbstractRepository
         if (systemSearchMgr == null) {
             if (repConfig.isSearchEnabled()) {
                 systemSearchMgr = new SearchManager(
-                        context,
+                        null, context,
                         repConfig,
                         getWorkspaceInfo(wspName).itemStateMgr,
                         context.getInternalVersionManager().getPersistenceManager(),
@@ -1330,13 +1330,16 @@ public class RepositoryImpl extends AbstractRepository
             File homeDir, FileSystem fs, PersistenceManagerConfig pmConfig)
             throws RepositoryException {
         try {
-            PersistenceManager pm = pmConfig.newInstance(PersistenceManager.class);
-            pm.init(new PMContext(
+            PersistenceManager pm = pmConfig
+                    .newInstance(PersistenceManager.class);
+            PMContext pmContext = new PMContext(
                     homeDir, fs,
                     context.getRootNodeId(),
                     context.getNamespaceRegistry(),
                     context.getNodeTypeRegistry(),
-                    context.getDataStore()));
+                    context.getDataStore(),
+                    context.getRepositoryStatistics());
+            pm.init(pmContext);
             return pm;
         } catch (Exception e) {
             String msg = "Cannot instantiate persistence manager " + pmConfig.getClassName();
@@ -1850,6 +1853,7 @@ public class RepositoryImpl extends AbstractRepository
                     // search manager is lazily instantiated in order to avoid
                     // 'chicken & egg' bootstrap problems
                     searchMgr = new SearchManager(
+                            getName(),
                             context,
                             config,
                             itemStateMgr, persistMgr,

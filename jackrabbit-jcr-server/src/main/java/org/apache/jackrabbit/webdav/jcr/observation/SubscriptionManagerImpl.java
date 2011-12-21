@@ -53,7 +53,7 @@ import java.util.ArrayList;
 // todo: make sure all expired subscriptions are removed!
 public class SubscriptionManagerImpl implements SubscriptionManager, TransactionListener {
 
-    private static Logger log = LoggerFactory.getLogger(SubscriptionManager.class);
+    private static Logger log = LoggerFactory.getLogger(SubscriptionManagerImpl.class);
 
     /**
      * Map containing all {@link org.apache.jackrabbit.webdav.observation.Subscription subscriptions}.
@@ -287,6 +287,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager, Transaction
 
         public Element toXml(Document document) {
             return delegatee.toXml(document);
+        }
+
+        public boolean eventsProvideNodeTypeInformation() {
+            return delegatee.eventsProvideNodeTypeInformation();
+        }
+
+        public boolean eventsProvideNoLocalFlag() {
+            return delegatee.eventsProvideNoLocalFlag();
         }
     }
 

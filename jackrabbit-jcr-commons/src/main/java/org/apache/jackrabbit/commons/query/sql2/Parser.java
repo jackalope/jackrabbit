@@ -794,7 +794,6 @@ public class Parser {
             while (true) {
                 type = types[i];
                 if (type != CHAR_NAME && type != CHAR_VALUE) {
-                    c = chars[i];
                     break;
                 }
                 i++;
@@ -937,9 +936,9 @@ public class Parser {
             if (types[i] != CHAR_VALUE) {
                 throw getSyntaxError();
             }
-            while (types[++i] == CHAR_VALUE) {
-                // go until the first non-number
-            }
+            do {
+                i++; // go until the first non-number
+            } while (types[i] == CHAR_VALUE);
         }
         parseIndex = i;
         String sub = statement.substring(start, i);

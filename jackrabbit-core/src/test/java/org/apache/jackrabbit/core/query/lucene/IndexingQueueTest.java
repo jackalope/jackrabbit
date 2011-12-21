@@ -40,7 +40,7 @@ import org.apache.jackrabbit.core.query.AbstractIndexingTest;
 public class IndexingQueueTest extends AbstractIndexingTest {
 
     private static final File TEMP_DIR =
-        new File(System.getProperty("java.io.tmpdir")); 
+        new File(System.getProperty("java.io.tmpdir"));
 
     public void testQueue() throws Exception {
         SearchIndex index = getSearchIndex();
@@ -63,7 +63,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
         assertFalse(nodes.hasNext());
 
         BlockingParser.unblock();
-        index.flush();
+        waitForTextExtractionTasksToFinish();
         assertEquals(0, queue.getNumPendingDocuments());
 
         q = qm.createQuery(testPath + "/*[jcr:contains(., 'fox')]", Query.XPATH);
@@ -86,7 +86,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
         session = null;
         superuser.logout();
         superuser = null;
-        TestHelper.shutdownWorkspace(WORKSPACE_NAME, repo);
+        TestHelper.shutdownWorkspace(getWorkspaceName(), repo);
 
         // delete index
         try {
@@ -101,7 +101,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
         Thread t = new Thread(new Runnable() {
             public void run() {
                 try {
-                    session = getHelper().getSuperuserSession(WORKSPACE_NAME);
+                    session = getHelper().getSuperuserSession(getWorkspaceName());
                 } catch (RepositoryException e) {
                     throw new RuntimeException(e);
                 }
@@ -121,7 +121,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
         }
 
         qm = session.getWorkspace().getQueryManager();
-        getSearchIndex().flush();
+        waitForTextExtractionTasksToFinish();
 
         String stmt = testPath + "//element(*, nt:resource)[jcr:contains(., 'fox')] order by @jcr:score descending";
         Query q = qm.createQuery(stmt, Query.XPATH);
@@ -142,7 +142,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
         session = null;
         superuser.logout();
         superuser = null;
-        TestHelper.shutdownWorkspace(WORKSPACE_NAME, repo);
+        TestHelper.shutdownWorkspace(getWorkspaceName(), repo);
 
         // delete index
         try {
@@ -153,7 +153,7 @@ public class IndexingQueueTest extends AbstractIndexingTest {
 
         BlockingParser.unblock();
         // start workspace again by getting a session
-        session = getHelper().getSuperuserSession(WORKSPACE_NAME);
+        session = getHelper().getSuperuserSession(getWorkspaceName());
 
         qm = session.getWorkspace().getQueryManager();
 

@@ -31,6 +31,7 @@ import org.apache.jackrabbit.core.SessionListener;
 import org.apache.jackrabbit.core.id.NodeId;
 import org.apache.jackrabbit.core.security.principal.EveryonePrincipal;
 import org.apache.jackrabbit.core.security.principal.PrincipalImpl;
+import org.apache.jackrabbit.core.security.user.action.AuthorizableAction;
 import org.apache.jackrabbit.core.session.SessionOperation;
 import org.apache.jackrabbit.spi.Name;
 import org.apache.jackrabbit.spi.Path;
@@ -256,7 +257,18 @@ public class UserManagerImpl extends ProtectedItemModifier
      */
     private final int groupMembershipSplitSize;
 
+    /**
+     * The membership cache.
+     */
     private final MembershipCache membershipCache;
+
+    /**
+     * Authorizable actions that will all be executed upon creation and removal
+     * of authorizables in the order they are contained in the array.<p/>
+     * Note, that if {@link #isAutoSave() autosave} is turned on, the configured
+     * actions are executed before persisting the creation or removal.
+     */
+    private AuthorizableAction[] authorizableActions = new AuthorizableAction[0];
 
     /**
      * Create a new <code>UserManager</code> with the default configuration.
@@ -378,6 +390,18 @@ public class UserManagerImpl extends ProtectedItemModifier
      */
     public int getGroupMembershipSplitSize() {
         return groupMembershipSplitSize;
+    }
+
+    /**
+     * Set the authorizable actions that will be invoked upon authorizable
+     * creation and removal.
+     *
+     * @param authorizableActions An array of authorizable actions.
+     */
+    public void setAuthorizableActions(AuthorizableAction[] authorizableActions) {
+        if (authorizableActions != null) {
+            this.authorizableActions = authorizableActions;
+        }
     }
 
     //--------------------------------------------------------< UserManager >---
@@ -535,6 +559,7 @@ public class UserManagerImpl extends ProtectedItemModifier
             setProperty(userNode, P_PASSWORD, getValue(UserImpl.buildPasswordValue(password)), true);
 
             User user = createUser(userNode);
+            onCreate(user, password);
             if (isAutoSave()) {
                 session.save();
             }
@@ -616,6 +641,7 @@ public class UserManagerImpl extends ProtectedItemModifier
             }
 
             Group group = createGroup(groupNode);
+            onCreate(group);
             if (isAutoSave()) {
                 session.save();
             }
@@ -736,14 +762,23 @@ public class UserManagerImpl extends ProtectedItemModifier
         Authorizable authorz = null;
         if (n != null) {
             String path = n.getPath();
-            if (n.isNodeType(NT_REP_USER) && Text.isDescendant(usersPath, path)) {
-                authorz = createUser(n);
-            } else if (n.isNodeType(NT_REP_GROUP) && Text.isDescendant(groupsPath, path)) {
-                authorz = createGroup(n);
+            if (n.isNodeType(NT_REP_USER)) {
+                if (Text.isDescendant(usersPath, path)) {
+                    authorz = createUser(n);
+                } else {
+                    /* user node outside of configured tree -> return null */
+                    log.error("User node '" + path + "' outside of configured user tree ('" + usersPath + "') -> Not a valid user.");
+                }
+            } else if (n.isNodeType(NT_REP_GROUP)) {
+                if (Text.isDescendant(groupsPath, path)) {
+                    authorz = createGroup(n);
+                } else {
+                    /* group node outside of configured tree -> return null */
+                    log.error("Group node '" + path + "' outside of configured group tree ('" + groupsPath + "') -> Not a valid group.");
+                }
             } else {
-                /* else some other node type or outside of the valid user/group
-                   hierarchy  -> return null. */
-                log.debug("Unexpected user nodetype " + n.getPrimaryNodeType().getName());
+                /* else some other node type -> return null. */
+                log.warn("Unexpected user/group node type " + n.getPrimaryNodeType().getName());
             }
         } /* else no matching node -> return null */
         return authorz;
@@ -1002,6 +1037,65 @@ public class UserManagerImpl extends ProtectedItemModifier
         }
 
         return n;
+    }
+
+    //--------------------------------------------------------------------------
+    /**
+     * Let the configured <code>AuthorizableAction</code>s perform additional
+     * tasks associated with the creation of the new user before the
+     * corresponding new node is persisted.
+     *
+     * @param user The new user.
+     * @param pw The password.
+     * @throws RepositoryException If an exception occurs.
+     */
+    private void onCreate(User user, String pw) throws RepositoryException {
+        for (AuthorizableAction action : authorizableActions) {
+            action.onCreate(user, pw, session);
+        }
+    }
+
+    /**
+     * Let the configured <code>AuthorizableAction</code>s perform additional
+     * tasks associated with the creation of the new group before the
+     * corresponding new node is persisted.
+     *
+     * @param group The new group.
+     * @throws RepositoryException If an exception occurs.
+     */
+    private void onCreate(Group group) throws RepositoryException {
+        for (AuthorizableAction action : authorizableActions) {
+            action.onCreate(group, session);
+        }
+    }
+
+    /**
+     * Let the configured <code>AuthorizableAction</code>s perform any clean
+     * up tasks related to the authorizable removal (before the corresponding
+     * node gets removed).
+     *
+     * @param authorizable The authorizable to be removed.
+     * @throws RepositoryException If an exception occurs.
+     */
+    void onRemove(Authorizable authorizable) throws RepositoryException {
+        for (AuthorizableAction action : authorizableActions) {
+            action.onRemove(authorizable, session);
+        }
+    }
+
+    /**
+     * Let the configured <code>AuthorizableAction</code>s perform additional
+     * tasks associated with password changing of a given user before the
+     * corresponding property is being changed.
+     *
+     * @param user The target user.
+     * @param password The new password.
+     * @throws RepositoryException If an exception occurs.
+     */
+    void onPasswordChange(User user, String password) throws RepositoryException {
+        for (AuthorizableAction action : authorizableActions) {
+            action.onPasswordChange(user, password, session);
+        }
     }
 
     //----------------------------------------------------< SessionListener >---

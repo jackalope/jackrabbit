@@ -94,6 +94,7 @@ import org.apache.jackrabbit.core.xml.ImportHandler;
 import org.apache.jackrabbit.core.xml.SessionImporter;
 import org.apache.jackrabbit.spi.Name;
 import org.apache.jackrabbit.spi.Path;
+import org.apache.jackrabbit.spi.commons.SessionExtensions;
 import org.apache.jackrabbit.spi.commons.conversion.DefaultNamePathResolver;
 import org.apache.jackrabbit.spi.commons.conversion.IdentifierResolver;
 import org.apache.jackrabbit.spi.commons.conversion.IllegalNameException;
@@ -111,7 +112,7 @@ import org.xml.sax.ContentHandler;
  * A <code>SessionImpl</code> ...
  */
 public class SessionImpl extends AbstractSession
-        implements JackrabbitSession, NamespaceResolver, NamePathResolver, IdentifierResolver {
+        implements JackrabbitSession, SessionExtensions, NamespaceResolver, NamePathResolver, IdentifierResolver {
 
     /**
      * Name of the session attribute that controls whether the
@@ -510,7 +511,7 @@ public class SessionImpl extends AbstractSession
      * @param value attribute value
      * @since Apache Jackrabbit 1.6
      */
-    protected void setAttribute(String name, Object value) {
+    public void setAttribute(String name, Object value) {
         if (value != null) {
             attributes.put(name, value);
         } else {
@@ -806,7 +807,10 @@ public class SessionImpl extends AbstractSession
      * {@inheritDoc}
      */
     public void save() throws RepositoryException {
-        perform(new SessionSaveOperation());
+        // JCR-3131: no need to perform save op when there's nothing to save...
+        if (context.getItemStateManager().hasAnyTransientItemStates()) {
+            perform(new SessionSaveOperation());
+        }
     }
 
     /**
@@ -1240,24 +1244,25 @@ public class SessionImpl extends AbstractSession
                     return false;
                 }
             }
-        } else if (target instanceof Workspace) {
-            if (methodName.equals("clone")
-                    || methodName.equals("copy")
-                    || methodName.equals("createWorkspace")
-                    || methodName.equals("deleteWorkspace")
-                    || methodName.equals("getImportContentHandler")
-                    || methodName.equals("importXML")
-                    || methodName.equals("move")) {
-                // todo minimal, best effort checks (e.g. permissions for write methods etc)
-            }
-        } else if (target instanceof Session) {
-            if (methodName.equals("clone")
-                    || methodName.equals("removeItem")
-                    || methodName.equals("getImportContentHandler")
-                    || methodName.equals("importXML")
-                    || methodName.equals("save")) {
-                // todo minimal, best effort checks (e.g. permissions for write methods etc)
-            }
+// TODO: Add minimal, best effort checks for Workspace and Session operations
+//        } else if (target instanceof Workspace) {
+//            if (methodName.equals("clone")
+//                    || methodName.equals("copy")
+//                    || methodName.equals("createWorkspace")
+//                    || methodName.equals("deleteWorkspace")
+//                    || methodName.equals("getImportContentHandler")
+//                    || methodName.equals("importXML")
+//                    || methodName.equals("move")) {
+//                // TODO minimal, best effort checks (e.g. permissions for write methods etc)
+//            }
+//        } else if (target instanceof Session) {
+//            if (methodName.equals("clone")
+//                    || methodName.equals("removeItem")
+//                    || methodName.equals("getImportContentHandler")
+//                    || methodName.equals("importXML")
+//                    || methodName.equals("save")) {
+//                // TODO minimal, best effort checks (e.g. permissions for write methods etc)
+//            }
         }
 
         // we're unable to evaluate capability, return true (staying on the safe side)

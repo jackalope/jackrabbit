@@ -74,7 +74,7 @@ public class InternalVersionManagerImpl extends InternalVersionManagerBase
     /**
      * the default logger
      */
-    private static Logger log = LoggerFactory.getLogger(InternalVersionManager.class);
+    private static Logger log = LoggerFactory.getLogger(InternalVersionManagerImpl.class);
 
     /**
      * The path of the jcr:system node: /jcr:system
@@ -645,9 +645,12 @@ public class InternalVersionManagerImpl extends InternalVersionManagerBase
 
         Collection<InternalVersionItem> items =
             new ArrayList<InternalVersionItem>();
-        for (Map.Entry<ItemId, InternalVersionItem> entry : versionItems.entrySet()) {
-            if (changes.has(entry.getKey())) {
-                items.add(entry.getValue());
+        synchronized (versionItems) {
+            for (Map.Entry<ItemId, InternalVersionItem> entry : versionItems
+                    .entrySet()) {
+                if (changes.has(entry.getKey())) {
+                    items.add(entry.getValue());
+                }
             }
         }
         itemsUpdated(items);

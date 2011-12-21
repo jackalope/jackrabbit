@@ -27,7 +27,7 @@
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>9</version>
+    <version>10</version>
     <relativePath />
   </parent>
 
@@ -43,11 +43,12 @@
   </issueManagement>
 
   <properties>
-    <slf4j.version>1.6.1</slf4j.version>
-    <logback.version>0.9.27</logback.version>
+    <slf4j.version>1.6.4</slf4j.version>
+    <logback.version>1.0.0</logback.version>
     <jetty.version>6.1.22</jetty.version>
-    <tika.version>0.9</tika.version>
+    <tika.version>1.0</tika.version>
     <clirr.baseline.version>2.2.0</clirr.baseline.version>
+    <project.reporting.outputEncoding>${project.build.sourceEncoding}</project.reporting.outputEncoding>
   </properties>
 
   <url>http://jackrabbit.apache.org/</url>
@@ -109,6 +110,24 @@
                 <systemPath>${java.home}/../lib/tools.jar</systemPath>
               </dependency>
             </dependencies>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>integrationTesting</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>
@@ -187,6 +206,10 @@
         <plugin>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>2.4.3</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>2.10</version>
         </plugin>
         <plugin>
           <artifactId>maven-war-plugin</artifactId>
@@ -367,7 +390,11 @@
           <!-- typically only needed by a file-based email system.   -->
           <exclusion>
             <groupId>org.apache.james</groupId>
-            <artifactId>apache-mime4j</artifactId>
+            <artifactId>apache-mime4j-core</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.james</groupId>
+            <artifactId>apache-mime4j-dom</artifactId>
           </exclusion>
           <!-- Exclude the Commons Compress library as we don't want -->
           <!-- to parse compressed archives like zips by default.    -->
@@ -452,7 +479,7 @@
       <dependency>
         <groupId>org.easymock</groupId>
         <artifactId>easymock</artifactId>
-        <version>2.5.2</version>
+        <version>3.0</version>
       </dependency>
       <dependency>
         <groupId>org.json</groupId>
@@ -462,7 +489,7 @@
       <dependency>
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
-        <version>3.8.1</version>
+        <version>4.10</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

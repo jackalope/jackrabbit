@@ -16,6 +16,9 @@
  */
 package org.apache.jackrabbit.core.xml;
 
+import static org.apache.jackrabbit.core.security.authorization.AccessControlConstants.NT_REP_ACCESS_CONTROL;
+import static org.apache.jackrabbit.core.security.authorization.AccessControlConstants.NT_REP_PRINCIPAL_ACCESS_CONTROL;
+
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -131,9 +134,17 @@ public class AccessControlImporter extends DefaultProtectedNodeImporter {
         }
 
         if (isPolicyNode(protectedParent)) {
-            acl = getACL(protectedParent.getParent().getPath());
+            String parentPath = protectedParent.getParent().getPath();
+            acl = getACL(parentPath);
             if (acl == null) {
-                log.warn("AccessControlImporter cannot be started: no ACL for {}.", protectedParent.getParent().getPath());
+                log.warn("AccessControlImporter cannot be started: no ACL for {}.", parentPath);
+                return false;
+            }
+            status = STATUS_ACL;
+        } else if (isRepoPolicyNode(protectedParent)) {
+            acl = getACL(null);
+            if (acl == null) {
+                log.warn("AccessControlImporter cannot be started: no Repo ACL.");
                 return false;
             }
             status = STATUS_ACL;
@@ -156,11 +167,7 @@ public class AccessControlImporter extends DefaultProtectedNodeImporter {
         for (AccessControlPolicy p: acMgr.getPolicies(path)) {
             if (p instanceof JackrabbitAccessControlList) {
                 acl = (JackrabbitAccessControlList) p;
-                // don't know if this check is needed
-                if (path.equals(acl.getPath())) {
-                    break;
-                }
-                acl = null;
+                break;
             }
         }
         if (acl != null) {
@@ -223,24 +230,25 @@ public class AccessControlImporter extends DefaultProtectedNodeImporter {
         } else {
             switch (status) {
                 case STATUS_AC_FOLDER:
-                    if (AccessControlConstants.NT_REP_ACCESS_CONTROL.equals(ntName)) {
+                    if (NT_REP_ACCESS_CONTROL.equals(ntName)) {
                         // yet another intermediate node -> keep status
-                    } else if (AccessControlConstants.NT_REP_PRINCIPAL_ACCESS_CONTROL.equals(ntName)) {
+                        status = STATUS_AC_FOLDER;
+                    } else if (NT_REP_PRINCIPAL_ACCESS_CONTROL.equals(ntName)) {
                         // the start of a principal-based acl
                         status = STATUS_PRINCIPAL_AC;
                     } else {
-                        // illegal node type.
+                        // illegal node type -> throw exception
                         throw new ConstraintViolationException("Unexpected node type " + ntName + ". Should be rep:AccessControl or rep:PrincipalAccessControl.");
                     }
                     checkIdMixins(childInfo);
                     break;
                 case STATUS_PRINCIPAL_AC:
-                    if (AccessControlConstants.NT_REP_ACCESS_CONTROL.equals(ntName)) {
+                    if (NT_REP_ACCESS_CONTROL.equals(ntName)) {
                         // some intermediate path between principal paths.
                         status = STATUS_AC_FOLDER;
-                    } else if (AccessControlConstants.NT_REP_PRINCIPAL_ACCESS_CONTROL.equals(ntName)) {
-                        // principal-based ac node underneath another one
-                        // keep status
+                    } else if (NT_REP_PRINCIPAL_ACCESS_CONTROL.equals(ntName)) {
+                        // principal-based ac node underneath another one -> keep status
+                        status = STATUS_PRINCIPAL_AC;
                     } else {
                         // the start the acl definition itself
                         checkDefinition(childInfo, AccessControlConstants.N_POLICY, AccessControlConstants.NT_REP_ACL);
@@ -298,8 +306,20 @@ public class AccessControlImporter extends DefaultProtectedNodeImporter {
 
     private static boolean isPolicyNode(NodeImpl node) throws RepositoryException {
         Name nodeName = node.getQName();
-        return (AccessControlConstants.N_POLICY.equals(nodeName) || AccessControlConstants.N_REPO_POLICY.equals(nodeName))
-                && node.isNodeType(AccessControlConstants.NT_REP_ACL);
+        return AccessControlConstants.N_POLICY.equals(nodeName) && node.isNodeType(AccessControlConstants.NT_REP_ACL);
+    }
+
+    /**
+     * @param node The node to be tested.
+     * @return <code>true</code> if the specified node is the 'rep:repoPolicy'
+     * acl node underneath the root node; <code>false</code> otherwise.
+     * @throws RepositoryException If an error occurs.
+     */
+    private static boolean isRepoPolicyNode(NodeImpl node) throws RepositoryException {
+        Name nodeName = node.getQName();
+        return AccessControlConstants.N_REPO_POLICY.equals(nodeName) &&
+                node.isNodeType(AccessControlConstants.NT_REP_ACL) &&
+                node.getDepth() == 1;
     }
 
     private static void checkDefinition(NodeInfo nInfo, Name expName, Name expNodeTypeName) throws ConstraintViolationException {

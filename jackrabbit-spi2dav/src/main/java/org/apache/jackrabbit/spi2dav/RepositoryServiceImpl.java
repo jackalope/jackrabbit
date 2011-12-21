@@ -75,6 +75,7 @@ import org.apache.commons.httpclient.methods.InputStreamRequestEntity;
 import org.apache.commons.httpclient.methods.RequestEntity;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.httpclient.params.HttpConnectionManagerParams;
+import org.apache.jackrabbit.commons.webdav.AtomFeedConstants;
 import org.apache.jackrabbit.commons.webdav.EventUtil;
 import org.apache.jackrabbit.commons.webdav.JcrRemotingConstants;
 import org.apache.jackrabbit.commons.webdav.JcrValueType;
@@ -147,6 +148,7 @@ import org.apache.jackrabbit.webdav.client.methods.LabelMethod;
 import org.apache.jackrabbit.webdav.client.methods.LockMethod;
 import org.apache.jackrabbit.webdav.client.methods.MergeMethod;
 import org.apache.jackrabbit.webdav.client.methods.MkColMethod;
+import org.apache.jackrabbit.webdav.client.methods.MkWorkspaceMethod;
 import org.apache.jackrabbit.webdav.client.methods.MoveMethod;
 import org.apache.jackrabbit.webdav.client.methods.OptionsMethod;
 import org.apache.jackrabbit.webdav.client.methods.OrderPatchMethod;
@@ -243,6 +245,10 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
     /** Repository descriptors. */
     private final Map<String, QValue[]> descriptors =
             new HashMap<String, QValue[]>();
+
+    /** Observation features. */
+    private boolean remoteServerProvidesNodeTypes = false;
+    private boolean remoteServerProvidesNoLocalFlag = false;
 
     /**
      * Same as {@link #RepositoryServiceImpl(String, IdFactory, NameFactory, PathFactory, QValueFactory, int, int)}
@@ -375,12 +381,52 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
                 method.setRequestHeader(ifH.getHeaderName(), ifH.getHeaderValue());
             }
         }
+        
+        initMethod(method, sessionInfo);
+    }
+
+    // set of HTTP methods that will not change the remote state
+    private static final Set<String> readMethods;
+    static {
+        Set<String> tmp = new HashSet<String>();
+        tmp.add("GET");
+        tmp.add("HEAD");
+        tmp.add("PROPFIND");
+        tmp.add("POLL");
+        tmp.add("REPORT");
+        tmp.add("SEARCH");
+        readMethods = Collections.unmodifiableSet(tmp);
+    }
+
+    // set headers for user data and session identification
+    protected static void initMethod(HttpMethod method, SessionInfo sessionInfo) throws RepositoryException {
+
+        boolean isReadAccess = readMethods.contains(method.getName());
+        boolean needsSessionId = !isReadAccess || "POLL".equals(method.getName());
+
+        if (sessionInfo instanceof SessionInfoImpl && needsSessionId) {
+            StringBuilder linkHeaderField = new StringBuilder();
+
+            String sessionIdentifier = ((SessionInfoImpl) sessionInfo)
+                    .getSessionIdentifier();
+            linkHeaderField.append("<" + sessionIdentifier + ">; rel=\""
+                    + JcrRemotingConstants.RELATION_REMOTE_SESSION_ID + "\"");
+
+            String userdata = ((SessionInfoImpl) sessionInfo).getUserData();
+            if (userdata != null && ! isReadAccess) {
+                String escaped = Text.escape(userdata);
+                linkHeaderField.append((", <data:," + escaped + ">; rel=\""
+                        + JcrRemotingConstants.RELATION_USER_DATA + "\""));
+            }
+
+            method.addRequestHeader("Link", linkHeaderField.toString());
+        }
     }
 
     private static void initMethod(DavMethod method, BatchImpl batchImpl, boolean addIfHeader) throws RepositoryException {
         initMethod(method, batchImpl.sessionInfo,  addIfHeader);
 
-        // add batchId as separate header
+        // add batchId as separate header, TODO: could probably re-use session id Link relation
         CodedUrlHeader ch = new CodedUrlHeader(TransactionConstants.HEADER_TRANSACTIONID, batchImpl.batchId);
         method.setRequestHeader(ch.getHeaderName(), ch.getHeaderValue());
     }
@@ -999,7 +1045,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
     }
 
     /**
-     * @see RepositoryService#getItemInfos(SessionInfo, NodeId)
+     * @see RepositoryService#getItemInfos(SessionInfo, ItemId)
      */
     public Iterator<? extends ItemInfo> getItemInfos(SessionInfo sessionInfo, ItemId itemId) throws RepositoryException {
         // TODO: implement batch read properly:
@@ -1243,7 +1289,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             } else if (ct.startsWith("text/xml")) {
                 // jcr:values property spooled
                 values = getValues(method.getResponseBodyAsStream(), resolver, propertyId);
-                type = (values.length > 0) ? values[0].getType() : loadType(uri, client, propertyId, resolver);
+                type = (values.length > 0) ? values[0].getType() : loadType(uri, client, propertyId, sessionInfo, resolver);
                 isMultiValued = true;
             } else {
                 throw new ItemNotFoundException("Unable to retrieve the property with id " + saveGetIdString(propertyId, resolver));
@@ -1301,7 +1347,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         }
     }
 
-    private int loadType(String propertyURI, HttpClient client, PropertyId propertyId, NamePathResolver resolver) throws IOException, DavException, RepositoryException {
+    private int loadType(String propertyURI, HttpClient client, PropertyId propertyId, SessionInfo sessionInfo, NamePathResolver resolver) throws IOException, DavException, RepositoryException {
         DavPropertyNameSet nameSet = new DavPropertyNameSet();
         nameSet.add(JcrRemotingConstants.JCR_TYPE_LN, ItemResourceConstants.NAMESPACE);
 
@@ -1977,11 +2023,64 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
     /**
      * @see RepositoryService#getEvents(SessionInfo, EventFilter, long)
      */
-    public EventBundle getEvents(SessionInfo sessionInfo, EventFilter filter,
-                                   long after) throws
-            RepositoryException, UnsupportedRepositoryOperationException {
-        // TODO
-        throw new UnsupportedRepositoryOperationException("Not implemented -> JCR-2541");
+    public EventBundle getEvents(SessionInfo sessionInfo, EventFilter filter, long after) throws RepositoryException,
+            UnsupportedRepositoryOperationException {
+        // TODO: use filters remotely (JCR-3179)
+
+        GetMethod method = null;
+        String rootUri = uriResolver.getWorkspaceUri(sessionInfo.getWorkspaceName());
+        rootUri += "?type=journal"; // TODO should have a way to discover URI template
+
+        try {
+            method = new GetMethod(rootUri);
+            method.addRequestHeader("If-None-Match", "\"" + Long.toHexString(after) + "\""); // TODO
+            initMethod(method, sessionInfo);
+
+            getClient(sessionInfo).executeMethod(method);
+            assert method.getStatusCode() == 200;
+
+            InputStream in = method.getResponseBodyAsStream();
+            Document doc = null;
+            if (in != null) {
+                // read response and try to build a xml document
+                try {
+                    doc = DomUtil.parseDocument(in);
+                } catch (ParserConfigurationException e) {
+                    IOException exception = new IOException("XML parser configuration error");
+                    exception.initCause(e);
+                    throw exception;
+                } catch (SAXException e) {
+                    IOException exception = new IOException("XML parsing error");
+                    exception.initCause(e);
+                    throw exception;
+                } finally {
+                    in.close();
+                }
+            }
+
+            List<Event> events = new ArrayList<Event>();
+
+            ElementIterator entries = DomUtil.getChildren(doc.getDocumentElement(), AtomFeedConstants.N_ENTRY);
+            while (entries.hasNext()) {
+                Element entryElem = entries.next();
+
+                Element contentElem = DomUtil.getChildElement(entryElem, AtomFeedConstants.N_CONTENT);
+                if (contentElem != null
+                        && "application/vnd.apache.jackrabbit.event+xml".equals(contentElem.getAttribute("type"))) {
+                    List<Event> el = buildEventList(contentElem, (SessionInfoImpl) sessionInfo);
+                    for (Event e : el) {
+                        if (e.getDate() > after && (filter == null || filter.accept(e, false))) {
+                            events.add(e);
+                        }
+                    }
+                }
+            }
+
+            return new EventBundleImpl(events, false);
+        } catch (Exception ex) {
+            log.error("extracting events from journal feed", ex);
+            throw new RepositoryException(ex);
+        }
     }
 
     /**
@@ -1990,10 +2089,19 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
     public Subscription createSubscription(SessionInfo sessionInfo,
                                            EventFilter[] filters)
             throws UnsupportedRepositoryOperationException, RepositoryException {
+
         checkSessionInfo(sessionInfo);
         String rootUri = uriResolver.getRootItemUri(sessionInfo.getWorkspaceName());
         String subscriptionId = subscribe(rootUri, S_INFO, null, sessionInfo, null);
         log.debug("Subscribed on server for session info " + sessionInfo);
+
+        try {
+            checkEventFilterSupport(filters);
+        }
+        catch (UnsupportedRepositoryOperationException ex) {
+            unsubscribe(rootUri, subscriptionId, sessionInfo);
+            throw (ex);
+        }
         return new EventSubscriptionImpl(subscriptionId, (SessionInfoImpl) sessionInfo);
     }
 
@@ -2006,6 +2114,25 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         // do nothing ...
         // this is actually not correct because we listen for everything and
         // rely on the client of the repository service to filter the events
+        checkEventFilterSupport(filters);
+    }
+
+    private void checkEventFilterSupport(EventFilter[] filters)
+            throws UnsupportedRepositoryOperationException {
+        for (EventFilter ef : filters) {
+            if (ef instanceof EventFilterImpl) {
+                EventFilterImpl efi = (EventFilterImpl) ef;
+                if (efi.getNodeTypeNames() != null
+                        && !remoteServerProvidesNodeTypes) {
+                    throw new UnsupportedRepositoryOperationException(
+                            "Remote server does not provide node type information in events");
+                }
+                if (efi.getNoLocal() && !remoteServerProvidesNoLocalFlag) {
+                    throw new UnsupportedRepositoryOperationException(
+                            "Remote server does not provide local flag in events");
+                }
+            }
+        }
     }
 
     public void dispose(Subscription subscription) throws RepositoryException {
@@ -2026,6 +2153,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             } else {
                 method = new SubscribeMethod(uri, subscriptionInfo);
             }
+            initMethod(method, sessionInfo);
 
             if (batchId != null) {
                 // add batchId as separate header
@@ -2035,6 +2163,13 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
 
             getClient(sessionInfo).executeMethod(method);
             method.checkSuccess();
+
+            org.apache.jackrabbit.webdav.observation.Subscription[] subs = method.getResponseAsSubscriptionDiscovery().getValue();
+            if (subs.length == 1) {
+                this.remoteServerProvidesNodeTypes = subs[0].eventsProvideNodeTypeInformation();
+                this.remoteServerProvidesNoLocalFlag = subs[0].eventsProvideNoLocalFlag();
+            }
+
             return method.getSubscriptionId();
         } catch (IOException e) {
             throw new RepositoryException(e);
@@ -2051,6 +2186,7 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         UnSubscribeMethod method = null;
         try {
             method = new UnSubscribeMethod(uri, subscriptionId);
+            initMethod(method, sessionInfo);
             getClient(sessionInfo).executeMethod(method);
             method.checkSuccess();
         } catch (IOException e) {
@@ -2096,12 +2232,12 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
                 while (it.hasNext()) {
                     Element bundleElement = it.nextElement();
                     String value = DomUtil.getAttribute(bundleElement,
-                            ObservationConstants.XML_EVENT_TRANSACTION_ID,
+                            ObservationConstants.XML_EVENT_LOCAL,
                             ObservationConstants.NAMESPACE);
                     // check if it matches a batch id recently submitted
                     boolean isLocal = false;
                     if (value != null) {
-                        isLocal = value.equals(sessionInfo.getLastBatchId());
+                        isLocal = Boolean.parseBoolean(value);
                     }
                     bundles.add(new EventBundleImpl(
                             buildEventList(bundleElement, sessionInfo),
@@ -2123,9 +2259,21 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
         }
     }
 
-    private List<Event> buildEventList(Element bundleElement, SessionInfoImpl sessionInfo) {
+    private List<Event> buildEventList(Element bundleElement, SessionInfoImpl sessionInfo) throws IllegalNameException, NamespaceException {
         List<Event> events = new ArrayList<Event>();
         ElementIterator eventElementIterator = DomUtil.getChildren(bundleElement, ObservationConstants.XML_EVENT, ObservationConstants.NAMESPACE);
+
+        String userId = null;
+
+        // get user id from enclosing Atom entry element in case this was a feed
+        if (DomUtil.matches(bundleElement, AtomFeedConstants.N_ENTRY)) {
+            Element authorEl = DomUtil.getChildElement(bundleElement, AtomFeedConstants.N_AUTHOR);
+            Element nameEl = authorEl != null ? DomUtil.getChildElement(authorEl, AtomFeedConstants.N_NAME) : null;
+            if (nameEl != null) {
+                userId = DomUtil.getTextTrim(nameEl);
+            }
+        }
+
         while (eventElementIterator.hasNext()) {
             Element evElem = eventElementIterator.nextElement();
             Element typeEl = DomUtil.getChildElement(evElem, ObservationConstants.XML_EVENTTYPE, ObservationConstants.NAMESPACE);
@@ -2139,35 +2287,61 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
             String href = DomUtil.getChildTextTrim(evElem, XML_HREF, NAMESPACE);
 
             int type = EventUtil.getJcrEventType(et[0].getName());
-            Path eventPath;
-            try {
-                eventPath = uriResolver.getQPath(href, sessionInfo);
-            } catch (RepositoryException e) {
-                // should not occur
-                log.error("Internal error while building Event", e.getMessage());
-                continue;
-            }
-
+            Path eventPath = null;
             ItemId eventId = null;
-            try {
-                if (type == Event.NODE_ADDED || type == Event.NODE_REMOVED) {
-                    eventId = uriResolver.getNodeId(href, sessionInfo);
-                } else {
-                    eventId = uriResolver.getPropertyId(href, sessionInfo);
-                }
-            } catch (RepositoryException e) {
-                log.warn("Unable to build event itemId: ", e.getMessage());
-            }
-            String parentHref = Text.getRelativeParent(href, 1, true);
             NodeId parentId = null;
-            try {
-                parentId = uriResolver.getNodeId(parentHref, sessionInfo);
-            } catch (RepositoryException e) {
-                log.warn("Unable to build event parentId: ", e.getMessage());
+
+            if (href != null) {
+                try {
+                    eventPath = uriResolver.getQPath(href, sessionInfo);
+                } catch (RepositoryException e) {
+                    // should not occur
+                    log.error("Internal error while building Event", e.getMessage());
+                    continue;
+                }
+
+                boolean isForNode = (type == Event.NODE_ADDED
+                        || type == Event.NODE_REMOVED || type == Event.NODE_MOVED);
+                
+                try {
+                    if (isForNode) {
+                        eventId = uriResolver.getNodeIdAfterEvent(href,
+                                sessionInfo, type == Event.NODE_REMOVED);
+                    } else {
+                        eventId = uriResolver.getPropertyId(href, sessionInfo);
+                    }
+                } catch (RepositoryException e) {
+                    if (isForNode) {
+                        eventId = idFactory.createNodeId((String) null, eventPath);
+                    } else {
+                        try {
+                            eventId = idFactory.createPropertyId(
+                                    idFactory.createNodeId((String) null,
+                                            eventPath.getAncestor(1)),
+                                    eventPath.getName());
+                        } catch (RepositoryException e1) {
+                            log.warn("Unable to build event itemId: ",
+                                    e.getMessage());
+                        }
+                    }
+                }
+
+                String parentHref = Text.getRelativeParent(href, 1, true);
+                try {
+                    parentId = uriResolver.getNodeId(parentHref, sessionInfo);
+                } catch (RepositoryException e) {
+                    log.warn("Unable to build event parentId: ", e.getMessage());
+                }
+                
             }
 
+            if (userId == null) {
+                // user id not retrieved from container
+                userId = DomUtil.getChildTextTrim(evElem, ObservationConstants.XML_EVENTUSERID, ObservationConstants.NAMESPACE);
+            }
 
-            events.add(new EventImpl(eventId, eventPath, parentId, type, evElem, getNamePathResolver(sessionInfo), getQValueFactory()));
+            events.add(new EventImpl(eventId, eventPath, parentId, type, userId, evElem,
+                    getNamePathResolver(sessionInfo), getQValueFactory()));
         }
 
         return events;
@@ -2404,16 +2578,46 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
      * {@inheritDoc}
      */
     public void createWorkspace(SessionInfo sessionInfo, String name, String srcWorkspaceName) throws AccessDeniedException, UnsupportedRepositoryOperationException, NoSuchWorkspaceException, RepositoryException {
-        // TODO
-        throw new UnsupportedOperationException("JCR-2003. Implementation missing");
+        if (srcWorkspaceName != null) {
+            throw new UnsupportedOperationException("JCR-2003. Implementation missing");
+        }
+
+        MkWorkspaceMethod method = null;
+     	try {
+             method = new MkWorkspaceMethod(uriResolver.getWorkspaceUri(name));
+             initMethod(method, sessionInfo, true);
+             getClient(sessionInfo).executeMethod(method);
+             method.checkSuccess();
+         } catch (IOException e) {
+             throw new RepositoryException(e);
+         } catch (DavException e) {
+             throw ExceptionConverter.generate(e);
+         } finally {
+             if (method != null) {
+                 method.releaseConnection();
+             }
+         }
     }
 
     /**
      * {@inheritDoc}
      */
     public void deleteWorkspace(SessionInfo sessionInfo, String name) throws AccessDeniedException, UnsupportedRepositoryOperationException, NoSuchWorkspaceException, RepositoryException {
-        // TODO
-        throw new UnsupportedOperationException("JCR-2003. Implementation missing");
+        DeleteMethod method = null;
+     	try {
+             method = new DeleteMethod(uriResolver.getWorkspaceUri(name));
+             initMethod(method, sessionInfo, true);
+             getClient(sessionInfo).executeMethod(method);
+             method.checkSuccess();
+         } catch (IOException e) {
+             throw new RepositoryException(e);
+         } catch (DavException e) {
+             throw ExceptionConverter.generate(e);
+         } finally {
+             if (method != null) {
+                 method.releaseConnection();
+             }
+         }
     }
 
     /**
@@ -2425,20 +2629,20 @@ public class RepositoryServiceImpl implements RepositoryService, DavConstants {
      */
     private Iterator<QNodeTypeDefinition> retrieveQNodeTypeDefinitions(SessionInfo sessionInfo, Document reportDoc) throws RepositoryException {
         ElementIterator it = DomUtil.getChildren(reportDoc.getDocumentElement(), NodeTypeConstants.NODETYPE_ELEMENT, null);
-            List<QNodeTypeDefinition> ntDefs = new ArrayList<QNodeTypeDefinition>();
-            NamePathResolver resolver = getNamePathResolver(sessionInfo);
-            while (it.hasNext()) {
-                ntDefs.add(DefinitionUtil.createQNodeTypeDefinition(it.nextElement(), resolver, getQValueFactory()));
+        List<QNodeTypeDefinition> ntDefs = new ArrayList<QNodeTypeDefinition>();
+        NamePathResolver resolver = getNamePathResolver(sessionInfo);
+        while (it.hasNext()) {
+            ntDefs.add(DefinitionUtil.createQNodeTypeDefinition(it.nextElement(), resolver, getQValueFactory()));
+        }
+        // refresh node type definitions map
+        synchronized (nodeTypeDefinitions) {
+            nodeTypeDefinitions.clear();
+            for (Object ntDef : ntDefs) {
+                QNodeTypeDefinition def = (QNodeTypeDefinition) ntDef;
+                nodeTypeDefinitions.put(def.getName(), def);
             }
-            // refresh node type definitions map
-            synchronized (nodeTypeDefinitions) {
-                nodeTypeDefinitions.clear();
-                for (Object ntDef : ntDefs) {
-                    QNodeTypeDefinition def = (QNodeTypeDefinition) ntDef;
-                    nodeTypeDefinitions.put(def.getName(), def);
-                }
-            }
-            return ntDefs.iterator();
+        }
+        return ntDefs.iterator();
     }
 
     private DavProperty<List<XmlSerializable>> createRegisterNodeTypesProperty(SessionInfo sessionInfo, QNodeTypeDefinition[] nodeTypeDefinitions, final boolean allowUpdate) throws IOException {
