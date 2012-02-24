@@ -239,6 +239,7 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
     private static final String PARAM_COPY = ":copy";
     private static final String PARAM_CLONE = ":clone";
     private static final String PARAM_INCLUDE = ":include";
+    private static final String PARAM_IDENTIFIERS = ":id";
 
     private BatchReadConfig brConfig;
 
@@ -328,14 +329,15 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
                 JsonWriter writer = new JsonWriter(webdavResponse.getWriter());
 
                 String[] includes = webdavRequest.getParameterValues(PARAM_INCLUDE);
-                if (includes == null) {
+                String[] identifiers = webdavRequest.getParameterValues(PARAM_IDENTIFIERS);
+                if (includes == null && identifiers == null) {
                     if (depth < BatchReadConfig.DEPTH_INFINITE) {
                         NodeType type = node.getPrimaryNodeType();
                         depth = brConfig.getDepth(type.getName());
                     }
                     writer.write(node, depth);
                 } else {
-                    writeMultiple(writer, node, includes, depth);
+                    writeMultiple(writer, node, includes, identifiers, depth);
                 }
             } catch (PathNotFoundException e) {
                 // properties cannot be requested as json object.
@@ -353,27 +355,56 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
     }
 
     private void writeMultiple(
-            JsonWriter writer, Node node, String[] includes, int depth)
+            JsonWriter writer, Node node, String[] includes, String[] identifiers, int depth)
             throws RepositoryException, IOException {
         Collection<Node> nodes = new ArrayList<Node>();
         Set<String> alreadyAdded = new HashSet<String>();
-        for (String include : includes) {
-            try {
-                Node n;
-                if (include.startsWith("/")) {
-                    n = node.getSession().getNode(include);
-                } else {
-                    n = node.getNode(include);
+        if (includes != null) {
+                        log.warn("includes set");
+
+            for (String include : includes) {
+                try {
+                                    log.warn(include);
+
+                    Node n;
+                    if (include.startsWith("/")) {
+                        n = node.getSession().getNode(include);
+                    } else {
+                        n = node.getNode(include);
+                    }
+                    String np = n.getPath();
+                    if (!alreadyAdded.contains(np)) {
+                        nodes.add(n);
+                        alreadyAdded.add(np);
+                    }
+                } catch (PathNotFoundException e) {
+                    // skip missing node
                 }
-                String np = n.getPath();
-                if (!alreadyAdded.contains(np)) {
-                    nodes.add(n);
-                    alreadyAdded.add(np);
-                }
-            } catch (PathNotFoundException e) {
-                // skip missing node
             }
         }
+        if (identifiers != null) {
+            log.warn("identifiers set");
+            
+            for (String id : identifiers) {
+                log.warn(id);
+                
+                try {
+                    Node n;
+                    n = node.getSession().getNodeByIdentifier(id);
+                    if (n != null) {
+                        
+                        String np = n.getPath();
+                        if (!alreadyAdded.contains(np)) {
+                            nodes.add(n);
+                            alreadyAdded.add(np);
+                        }
+                    }
+                } catch (PathNotFoundException e) {
+                    log.warn(e.getMessage());
+                }
+            }
+        }
+        
         writer.write(nodes, depth);
     }
 
@@ -389,6 +420,8 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
             try {
                 String[] pValues;
                 String[] includes = null; // multi-read over POST
+                String[] identifiers = null; // multi-read over POST
+
                 if ((pValues = data.getParameterValues(PARAM_CLONE)) != null) {
                     loc = clone(session, pValues, davResource.getLocator());
                 } else if ((pValues = data.getParameterValues(PARAM_COPY)) != null) {
@@ -396,18 +429,26 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
                 } else if (data.getParameterValues(PARAM_DIFF) != null) {
                     String targetPath = davResource.getLocator().getRepositoryPath();
                     processDiff(session, targetPath, data);
-                } else if ((pValues = data.getParameterValues(PARAM_INCLUDE)) != null
-                        && canHandle(DavMethods.DAV_GET, webdavRequest, davResource)) {
-                    includes = pValues;
                 } else {
-                    String targetPath = davResource.getLocator().getRepositoryPath();
-                    loc = modifyContent(session, targetPath, data);
+                    if (canHandle(DavMethods.DAV_GET, webdavRequest, davResource)) {
+                       if ((pValues = data.getParameterValues(PARAM_INCLUDE)) != null) {
+                           includes = pValues;
+                       } 
+                       if ((pValues = data.getParameterValues(PARAM_IDENTIFIERS)) != null) {
+                           identifiers = pValues;
+                       }
+                    }
+                    if (identifiers == null && includes == null) {
+                        String targetPath = davResource.getLocator().getRepositoryPath();
+                        loc = modifyContent(session, targetPath, data);
+                    }
+
                 }
 
                 // TODO: append entity
                 if (loc == null) {
                     webdavResponse.setStatus(HttpServletResponse.SC_OK);
-                    if (includes != null) {
+                    if (includes != null || identifiers != null) {
                         webdavResponse.setContentType("text/plain;charset=utf-8");
                         JsonWriter writer = new JsonWriter(webdavResponse.getWriter());
 
@@ -417,7 +458,7 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
                         Node node = session.getNode(path);
                         int depth = ((WrappingLocator) locator).getDepth();
 
-                        writeMultiple(writer, node, includes, depth);
+                        writeMultiple(writer, node, includes, identifiers, depth);
                     }
                 } else {
                     webdavResponse.setHeader(DeltaVConstants.HEADER_LOCATION, loc);
@@ -446,7 +487,8 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
         DavResourceLocator locator = davResource.getLocator();
         switch (methodCode) {
             case DavMethods.DAV_GET:
-                return davResource.exists() && (locator instanceof WrappingLocator)
+                return davResource.exists() && (
+                        locator instanceof WrappingLocator)
                         && ((WrappingLocator) locator).isJsonRequest;
             case DavMethods.DAV_POST:
                 String ct = request.getContentType();
