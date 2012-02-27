@@ -360,12 +360,8 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
         Collection<Node> nodes = new ArrayList<Node>();
         Set<String> alreadyAdded = new HashSet<String>();
         if (includes != null) {
-                        log.warn("includes set");
-
             for (String include : includes) {
                 try {
-                                    log.warn(include);
-
                     Node n;
                     if (include.startsWith("/")) {
                         n = node.getSession().getNode(include);
@@ -383,11 +379,7 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
             }
         }
         if (identifiers != null) {
-            log.warn("identifiers set");
-            
             for (String id : identifiers) {
-                log.warn(id);
-                
                 try {
                     Node n;
                     n = node.getSession().getNodeByIdentifier(id);
@@ -400,7 +392,7 @@ public abstract class JcrRemotingServlet extends JCRWebdavServerServlet {
                         }
                     }
                 } catch (PathNotFoundException e) {
-                    log.warn(e.getMessage());
+                    // skip missing node
                 }
             }
         }
