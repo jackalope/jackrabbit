@@ -310,7 +310,7 @@ public class BundleDbPersistenceManager
      * @deprecated
      * This method is deprecated; {@link setDatabaseType} should be used instead.
      *
-     * @param database type name
+     * @param databaseType database type name
      */
     public void setSchema(String databaseType) {
         this.databaseType = databaseType;
@@ -321,7 +321,7 @@ public class BundleDbPersistenceManager
      * the respective .ddl resource in order to create the required schema
      * objects.
      *
-     * @param database type name
+     * @param databaseType database type name
      */
     public void setDatabaseType(String databaseType) {
         this.databaseType = databaseType;
@@ -1057,7 +1057,7 @@ public class BundleDbPersistenceManager
             nodeReferenceSelectSQL = "select REFS_DATA from " + schemaObjectPrefix + "REFS where NODE_ID = ?";
             nodeReferenceDeleteSQL = "delete from " + schemaObjectPrefix + "REFS where NODE_ID = ?";
 
-            bundleSelectAllIdsSQL = "select NODE_ID from " + schemaObjectPrefix + "BUNDLE";
+            bundleSelectAllIdsSQL = "select NODE_ID from " + schemaObjectPrefix + "BUNDLE ORDER BY NODE_ID";
             bundleSelectAllIdsFromSQL = "select NODE_ID from " + schemaObjectPrefix + "BUNDLE WHERE NODE_ID > ? ORDER BY NODE_ID";
         } else {
             bundleInsertSQL = "insert into " + schemaObjectPrefix + "BUNDLE (BUNDLE_DATA, NODE_ID_HI, NODE_ID_LO) values (?, ?, ?)";
@@ -1074,7 +1074,8 @@ public class BundleDbPersistenceManager
             nodeReferenceSelectSQL = "select REFS_DATA from " + schemaObjectPrefix + "REFS where NODE_ID_HI = ? and NODE_ID_LO = ?";
             nodeReferenceDeleteSQL = "delete from " + schemaObjectPrefix + "REFS where NODE_ID_HI = ? and NODE_ID_LO = ?";
 
-            bundleSelectAllIdsSQL = "select NODE_ID_HI, NODE_ID_LO from " + schemaObjectPrefix + "BUNDLE";
+            bundleSelectAllIdsSQL = "select NODE_ID_HI, NODE_ID_LO from " + schemaObjectPrefix 
+                + "BUNDLE ORDER BY NODE_ID_HI, NODE_ID_LO";
             // need to use HI and LO parameters
             // this is not the exact statement, but not all databases support WHERE (NODE_ID_HI, NODE_ID_LOW) >= (?, ?)
             bundleSelectAllIdsFromSQL =

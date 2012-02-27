@@ -16,6 +16,9 @@
  */
 package org.apache.jackrabbit.test.api.observation;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.jackrabbit.test.NotExecutableException;
@@ -54,11 +57,7 @@ public class NodeReorderTest extends AbstractObservationTest {
      */
     private static final String DEST_CHILD_REL_PATH = "destChildRelPath";
 
-    /**
-     * Tests if reordering a child node triggers a {@link Event#NODE_REMOVED}
-     * and a {@link Event#NODE_ADDED} event.
-     */
-    public void testNodeReorder()
+    private void doTestNodeReorder(List<Event> added, List<Event> removed, List<Event> moved)
             throws RepositoryException, NotExecutableException {
         if (!testRootNode.getDefinition().getDeclaringNodeType().hasOrderableChildNodes()) {
             throw new NotExecutableException("Node at '" + testRoot + "' does not support orderable child nodes.");
@@ -80,7 +79,7 @@ public class NodeReorderTest extends AbstractObservationTest {
         testRootNode.addNode(nodeName1, testNodeType);
         testRootNode.addNode(nodeName2, testNodeType);
         testRootNode.addNode(nodeName3, testNodeType);
-        testRootNode.save();
+        testRootNode.getSession().save();
         EventResult addNodeListener = new EventResult(log);
         EventResult removeNodeListener = new EventResult(log);
         EventResult moveNodeListener = new EventResult(log);
@@ -88,13 +87,27 @@ public class NodeReorderTest extends AbstractObservationTest {
         addEventListener(removeNodeListener, Event.NODE_REMOVED);
         addEventListener(moveNodeListener, Event.NODE_MOVED);
         testRootNode.orderBefore(nodeName3, nodeName2);
-        testRootNode.save();
-        Event[] added = addNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
-        Event[] removed = removeNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
-        Event[] moved = moveNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
+        testRootNode.getSession().save();
+        added.addAll(Arrays.asList(addNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT)));
+        removed.addAll(Arrays.asList(removeNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT)));
+        moved.addAll(Arrays.asList(moveNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT)));
         removeEventListener(addNodeListener);
         removeEventListener(removeNodeListener);
         removeEventListener(moveNodeListener);
+    }
+
+    /**
+     * Tests if reordering a child node triggers a {@link Event#NODE_REMOVED}
+     * and a {@link Event#NODE_ADDED} event.
+     */
+    public void testNodeReorderAddRemove() throws RepositoryException, NotExecutableException {
+
+        List<Event> added = new ArrayList<Event>();
+        List<Event> removed = new ArrayList<Event>();
+        List<Event> moved = new ArrayList<Event>();
+
+        doTestNodeReorder(added, removed, moved);
+
         // either
         // 1) nodename2 has been reordered to the end
         // or:
@@ -106,21 +119,35 @@ public class NodeReorderTest extends AbstractObservationTest {
 
         // if true, check for option 1)
         boolean reorderEnd = false;
-        for (int i = 0; i < added.length; i++) {
-            if (added[i].getPath().endsWith(nodeName2)) {
+        for (Event e : added) {
+            if (e.getPath().endsWith(nodeName2)) {
                 reorderEnd = true;
                 break;
             }
         }
+
         if (reorderEnd) {
-            checkNodeAdded(added, new String[]{nodeName2}, null);
-            checkNodeRemoved(removed, new String[]{nodeName2}, null);
-            checkNodeReordered(moved, nodeName2, nodeName2, null);
+            checkNodeAdded(added, new String[] { nodeName2 }, null);
+            checkNodeRemoved(removed, new String[] { nodeName2 }, null);
         } else {
-            checkNodeAdded(added, new String[]{nodeName3}, null);
-            checkNodeRemoved(removed, new String[]{nodeName3}, null);
-            checkNodeReordered(moved, nodeName3, nodeName3, nodeName2);
+            checkNodeAdded(added, new String[] { nodeName3 }, null);
+            checkNodeRemoved(removed, new String[] { nodeName3 }, null);
         }
+    }
+
+    /**
+     * Tests if reordering a child node triggers a {@link Event#NODE_MOVED}
+     * event.
+     */
+    public void testNodeReorderMove() throws RepositoryException, NotExecutableException {
+
+        List<Event> added = new ArrayList<Event>();
+        List<Event> removed = new ArrayList<Event>();
+        List<Event> moved = new ArrayList<Event>();
+
+        doTestNodeReorder(added, removed, moved);
+
+        checkNodeReordered(moved, nodeName3, nodeName3, nodeName2);
     }
 
     /**
@@ -152,7 +179,7 @@ public class NodeReorderTest extends AbstractObservationTest {
         }
         testRootNode.addNode(nodeName1, testNodeType);
         testRootNode.addNode(nodeName1, testNodeType);
-        testRootNode.save();
+        testRootNode.getSession().save();
         EventResult addNodeListener = new EventResult(log);
         EventResult removeNodeListener = new EventResult(log);
         EventResult moveNodeListener = new EventResult(log);
@@ -161,7 +188,7 @@ public class NodeReorderTest extends AbstractObservationTest {
         addEventListener(moveNodeListener, Event.NODE_MOVED);
         testRootNode.orderBefore(nodeName1 + "[3]", nodeName1 + "[2]");
         //testRootNode.orderBefore(nodeName1 + "[2]", null);
-        testRootNode.save();
+        testRootNode.getSession().save();
         Event[] added = addNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
         Event[] removed = removeNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
         Event[] moved = moveNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
@@ -231,7 +258,7 @@ public class NodeReorderTest extends AbstractObservationTest {
         testRootNode.addNode(nodeName1, testNodeType);
         testRootNode.addNode(nodeName1, testNodeType);
         testRootNode.addNode(nodeName3, testNodeType);
-        testRootNode.save();
+        testRootNode.getSession().save();
         EventResult addNodeListener = new EventResult(log);
         EventResult removeNodeListener = new EventResult(log);
         EventResult moveNodeListener = new EventResult(log);
@@ -240,7 +267,7 @@ public class NodeReorderTest extends AbstractObservationTest {
         addEventListener(moveNodeListener, Event.NODE_MOVED);
         testRootNode.orderBefore(nodeName1 + "[2]", null);
         testRootNode.getNode(nodeName3).remove();
-        testRootNode.save();
+        testRootNode.getSession().save();
         Event[] added = addNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
         Event[] removed = removeNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
         Event[] moved = moveNodeListener.getEvents(DEFAULT_WAIT_TIMEOUT);
@@ -297,6 +324,15 @@ public class NodeReorderTest extends AbstractObservationTest {
         checkInfoEntry(info, DEST_CHILD_REL_PATH, before);
     }
 
+    protected void checkNodeReordered(List<Event> events, String src, String dest, String before)
+            throws RepositoryException {
+        checkNodes(events.toArray(new Event[0]), new String[] { dest }, null, Event.NODE_MOVED);
+        assertEquals("Wrong number of events", 1, events.size());
+        Map<?, ?> info = events.get(0).getInfo();
+        checkInfoEntry(info, SRC_CHILD_REL_PATH, src);
+        checkInfoEntry(info, DEST_CHILD_REL_PATH, before);
+    }
+
     /**
      * Checks if the info map contains the given <code>key</code> with the
      * <code>expected</code> value.
@@ -310,4 +346,15 @@ public class NodeReorderTest extends AbstractObservationTest {
         assertEquals("Wrong event info value for: " + key,
                 expected, (String) info.get(key));
     }
+
+    protected void checkNodeAdded(List<Event> events, String[] requiredRelPaths, String[] optionalRelPaths)
+            throws RepositoryException {
+        checkNodes(events.toArray(new Event[0]), requiredRelPaths, optionalRelPaths, Event.NODE_ADDED);
+    }
+
+    protected void checkNodeRemoved(List<Event> events, String[] requiredRelPaths, String[] optionalRelPaths)
+            throws RepositoryException {
+        checkNodes(events.toArray(new Event[0]), requiredRelPaths, optionalRelPaths, Event.NODE_REMOVED);
+    }
+
 }

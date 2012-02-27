@@ -253,6 +253,22 @@ public class DomUtil {
     }
 
     /**
+     * Calls {@link #getTextTrim(Element)} on the first child element that matches
+     * the given name.
+     *
+     * @param parent
+     * @param childName
+     * @return text contained in the first child that matches the given name
+     * or <code>null</code>. Note, that leading and trailing whitespace
+     * is removed from the text.
+     * @see #getTextTrim(Element)
+     */
+    public static String getChildTextTrim(Element parent, QName childName) {
+        Element child = getChildElement(parent, childName);
+        return (child == null) ? null : getTextTrim(child);
+    }
+
+    /**
      * Returns true if the given parent node has a child element that matches
      * the specified local name and namespace.
      *
@@ -669,17 +685,14 @@ public class DomUtil {
     /**
      * Converts the given timeout (long value defining the number of milli-
      * second until timeout is reached) to its Xml representation as defined
-     * by RTF 2518.<br>
-     * Note, that {@link DavConstants#INFINITE_TIMEOUT} is not represented by the String
-     * {@link DavConstants#TIMEOUT_INFINITE 'Infinite'} defined by RFC 2518, due to a known
-     * issue with Microsoft Office that opens the document "read only" and
-     * never unlocks the resource if the timeout is missing or 'Infinite'.
+     * by RFC 4918.<br>
      *
      * @param timeout number of milli-seconds until timeout is reached.
      * @return 'timeout' Xml element
      */
     public static Element timeoutToXml(long timeout, Document factory) {
-        String expString = "Second-"+ timeout/1000;
+        boolean infinite = timeout / 1000 > Integer.MAX_VALUE || timeout == DavConstants.INFINITE_TIMEOUT;
+        String expString = infinite ? DavConstants.TIMEOUT_INFINITE : "Second-" + timeout / 1000;
         return createElement(factory, DavConstants.XML_TIMEOUT, DavConstants.NAMESPACE, expString);
     }
 

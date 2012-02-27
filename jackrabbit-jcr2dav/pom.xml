@@ -75,20 +75,13 @@
                       org.apache.jackrabbit.test.api.lock.LockManagerTest#testAddInvalidLockToken
                       org.apache.jackrabbit.test.api.lock.LockManagerTest#testAddLockTokenToAnotherSession
                       org.apache.jackrabbit.test.api.lock.LockManagerTest#testLockTransfer2
-                      org.apache.jackrabbit.jcr2spi.lock.OpenScopedLockTest#testLogoutHasNoEffect 
+                      org.apache.jackrabbit.jcr2spi.lock.OpenScopedLockTest#testLogoutHasNoEffect
+                      <!-- JCR-3207 -->
+                      org.apache.jackrabbit.test.api.observation.NodeReorderTest#testNodeReorderMove
                       <!-- JCR-2533 : missing impl of checkQueryStatement -->                      
                       org.apache.jackrabbit.test.api.query.CreateQueryTest#testUnknownQueryLanguage
-                      <!-- JCR-2543 : query offset -->
-                      org.apache.jackrabbit.test.api.query.SetOffsetTest#testSetOffset
                       <!-- JCR-2533 : missing impl of checkQueryStatement -->
                       org.apache.jackrabbit.test.api.query.qom.BindVariableValueTest
-                      <!-- JCR-2535 : Row.getPath() called with multiple selectors (server-side) -->
-                      org.apache.jackrabbit.test.api.query.qom.ChildNodeJoinConditionTest
-                      org.apache.jackrabbit.test.api.query.qom.ColumnTest#testMultiColumn
-                      org.apache.jackrabbit.test.api.query.qom.DescendantNodeJoinConditionTest
-                      org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest
-                      org.apache.jackrabbit.test.api.query.qom.OrderingTest#testMultipleSelectors
-                      org.apache.jackrabbit.test.api.query.qom.SameNodeJoinConditionTest
                       <!-- JCR-2112 : simple versioning not implemented -->
                       org.apache.jackrabbit.test.api.version.simple
                       <!-- JCR-2104 : activities and configuration -->

@@ -93,20 +93,14 @@ public class JcrActiveLock extends AbstractActiveLock implements ActiveLock, Dav
      * @see ActiveLock#getToken()
      */
     public String getToken() {
-        String token = lock.getLockToken();
-        if (token == null && lock.isSessionScoped()
-                && lock.isLockOwningSession()) {
-            // special handling for session scoped locks that are owned by the
-            // current session but never expose their token with jsr 283.
-            try {
-                token = lock.getNode().getIdentifier();
-            } catch (RepositoryException e) {
-                // should never get here
-                log.warn("Unexpected error while retrieving node identifier for building a DAV specific lock token.",e.getMessage());
-            }
+        try {
+            return LockTokenMapper.getDavLocktoken(lock);
+        } catch (RepositoryException e) {
+            // should never get here
+            log.warn("Unexpected error while retrieving node identifier for building a DAV specific lock token.",
+                    e.getMessage());
+            return null;
         }
-        // default behaviour: just return the token exposed by the lock.
-        return token;
     }
 
     /**
@@ -124,14 +118,33 @@ public class JcrActiveLock extends AbstractActiveLock implements ActiveLock, Dav
     }
 
     /**
-     * Since jcr locks do not reveal the time left until they expire, {@link #INFINITE_TIMEOUT}
-     * is returned. A missing timeout causes problems with Microsoft clients.
+     * Calculates the milliseconds of the timeout from
+     * {@link javax.jcr.lock.Lock#getSecondsRemaining()}. If the timeout of
+     * jcr lock is undefined or infinite {@link #INFINITE_TIMEOUT} is
+     * returned.
      *
-     * @return Always returns {@link #INFINITE_TIMEOUT}
      * @see ActiveLock#getTimeout()
      */
     public long getTimeout() {
-        return INFINITE_TIMEOUT;
+        try {
+            long to = lock.getSecondsRemaining();
+            long reportAs;
+
+            if (to == Long.MAX_VALUE) {
+                reportAs = INFINITE_TIMEOUT;
+            }
+            else if (to / 1000 <= Long.MAX_VALUE / 1000) {
+                // expressible as long?
+                reportAs = to * 1000;
+            }
+            else {
+                reportAs = INFINITE_TIMEOUT;
+            }
+
+            return reportAs;
+        } catch (RepositoryException e) {
+            return INFINITE_TIMEOUT;
+        }
     }
 
     /**

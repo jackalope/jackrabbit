@@ -244,28 +244,32 @@ public class NodeIndexer {
 
         Set<Name> props = node.getPropertyNames();
         for (Name propName : props) {
-            PropertyId id = new PropertyId(node.getNodeId(), propName);
-            try {
-                PropertyState propState = (PropertyState) stateProvider.getItemState(id);
+            if (isIndexed(propName)) {
+                PropertyId id = new PropertyId(node.getNodeId(), propName);
+                try {
+                    PropertyState propState =
+                            (PropertyState) stateProvider.getItemState(id);
 
-                // add each property to the _PROPERTIES_SET for searching
-                // beginning with V2
-                if (indexFormatVersion.getVersion() >= IndexFormatVersion.V2.getVersion()) {
-                    addPropertyName(doc, propState.getName());
-                }
+                    // add each property to the _PROPERTIES_SET for searching
+                    // beginning with V2
+                    if (indexFormatVersion.getVersion() >= IndexFormatVersion.V2.getVersion()) {
+                        addPropertyName(doc, propState.getName());
+                    }
 
-                InternalValue[] values = propState.getValues();
-                for (InternalValue value : values) {
-                    addValue(doc, value, propState.getName());
+                    InternalValue[] values = propState.getValues();
+                    for (InternalValue value : values) {
+                        addValue(doc, value, propState.getName());
+                    }
+
+                    if (values.length > 1) {
+                        // real multi-valued
+                        addMVPName(doc, propState.getName());
+                    }
+                } catch (NoSuchItemStateException e) {
+                    throwRepositoryException(e);
+                } catch (ItemStateException e) {
+                    throwRepositoryException(e);
                 }
-                if (values.length > 1) {
-                    // real multi-valued
-                    addMVPName(doc, propState.getName());
-                }
-            } catch (NoSuchItemStateException e) {
-                throwRepositoryException(e);
-            } catch (ItemStateException e) {
-                throwRepositoryException(e);
             }
         }
 
@@ -322,76 +326,48 @@ public class NodeIndexer {
         }
         switch (value.getType()) {
             case PropertyType.BINARY:
-                if (isIndexed(name)) {
-                    addBinaryValue(doc, fieldName, value);
-                }
+                addBinaryValue(doc, fieldName, value);
                 break;
             case PropertyType.BOOLEAN:
-                if (isIndexed(name)) {
-                    addBooleanValue(doc, fieldName, value.getBoolean());
-                }
+                addBooleanValue(doc, fieldName, value.getBoolean());
                 break;
             case PropertyType.DATE:
-                if (isIndexed(name)) {
-                    addCalendarValue(doc, fieldName, value.getDate());
-                }
+                addCalendarValue(doc, fieldName, value.getDate());
                 break;
             case PropertyType.DOUBLE:
-                if (isIndexed(name)) {
-                    addDoubleValue(doc, fieldName, value.getDouble());
-                }
+                addDoubleValue(doc, fieldName, value.getDouble());
                 break;
             case PropertyType.LONG:
-                if (isIndexed(name)) {
-                    addLongValue(doc, fieldName, value.getLong());
-                }
+                addLongValue(doc, fieldName, value.getLong());
                 break;
             case PropertyType.REFERENCE:
-                if (isIndexed(name)) {
-                    addReferenceValue(doc, fieldName, value.getNodeId(), false);
-                }
+                addReferenceValue(doc, fieldName, value.getNodeId(), false);
                 break;
             case PropertyType.WEAKREFERENCE:
-                if (isIndexed(name)) {
-                    addReferenceValue(doc, fieldName, value.getNodeId(), true);
-                }
+                addReferenceValue(doc, fieldName, value.getNodeId(), true);
                 break;
             case PropertyType.PATH:
-                if (isIndexed(name)) {
-                    addPathValue(doc, fieldName, value.getPath());
-                }
+                addPathValue(doc, fieldName, value.getPath());
                 break;
             case PropertyType.URI:
-                if (isIndexed(name)) {
-                    addURIValue(doc, fieldName, value.getURI());
-                }
+                addURIValue(doc, fieldName, value.getURI());
                 break;
             case PropertyType.STRING:
-                if (isIndexed(name)) {
-                    // never fulltext index jcr:uuid String
-                    if (name.equals(NameConstants.JCR_UUID)) {
-                        addStringValue(doc, fieldName, value.getString(),
-                                false, false, DEFAULT_BOOST, true);
-                    } else {
-                        addStringValue(doc, fieldName, value.getString(),
-                                true, isIncludedInNodeIndex(name),
-                                getPropertyBoost(name), useInExcerpt(name));
-                    }
+                // never fulltext index jcr:uuid String
+                if (name.equals(NameConstants.JCR_UUID)) {
+                    addStringValue(doc, fieldName, value.getString(),
+                            false, false, DEFAULT_BOOST, true);
+                } else {
+                    addStringValue(doc, fieldName, value.getString(),
+                            true, isIncludedInNodeIndex(name),
+                            getPropertyBoost(name), useInExcerpt(name));
                 }
                 break;
             case PropertyType.NAME:
-                // jcr:primaryType and jcr:mixinTypes are required for correct
-                // node type resolution in queries
-                if (name.equals(NameConstants.JCR_PRIMARYTYPE)
-                        || name.equals(NameConstants.JCR_MIXINTYPES)
-                        || isIndexed(name)) {
-                    addNameValue(doc, fieldName, value.getName());
-                }
+                addNameValue(doc, fieldName, value.getName());
                 break;
             case PropertyType.DECIMAL:
-                if (isIndexed(name)) {
-                    addDecimalValue(doc, fieldName, value.getDecimal());
-                }
+                addDecimalValue(doc, fieldName, value.getDecimal());
                 break;
             default:
                 throw new IllegalArgumentException("illegal internal value type: " + value.getType());
@@ -413,12 +389,6 @@ public class NodeIndexer {
      */
     protected void addValueProperty(Document doc, InternalValue value,
             Name name, String fieldName) throws RepositoryException {
-
-        // skip this method if field is not indexed
-        if (!isIndexed(name)) {
-            return;
-        }
-
         // add length
         if (indexFormatVersion.getVersion() >= IndexFormatVersion.V3.getVersion()) {
             addLength(doc, fieldName, value);
@@ -855,19 +825,21 @@ public class NodeIndexer {
     }
 
     /**
-     * Returns <code>true</code> if the property with the given name should be
-     * indexed.
+     * Returns <code>true</code> if the property with the given name should
+     * be indexed. The default is to index all properties unless explicit
+     * indexing configuration is specified. The <code>jcr:primaryType</code>
+     * and <code>jcr:mixinTypes</code> properties are always indexed for
+     * correct node type resolution in queries.
      *
      * @param propertyName name of a property.
-     * @return <code>true</code> if the property should be fulltext indexed;
+     * @return <code>true</code> if the property should be indexed;
      *         <code>false</code> otherwise.
      */
     protected boolean isIndexed(Name propertyName) {
-        if (indexingConfig == null) {
-            return true;
-        } else {
-            return indexingConfig.isIndexed(node, propertyName);
-        }
+        return indexingConfig == null
+                || propertyName.equals(NameConstants.JCR_PRIMARYTYPE)
+                || propertyName.equals(NameConstants.JCR_MIXINTYPES)
+                || indexingConfig.isIndexed(node, propertyName);
     }
 
     /**
